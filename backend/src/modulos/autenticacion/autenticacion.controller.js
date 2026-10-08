@@ -1,72 +1,133 @@
+
 import bcrypt from 'bcrypt';
-import {pool} from '../../db.js';
+import { pool } from '../../db.js';
 import { generarTokenDeAcceso } from './jwt.js';
+
+const opcionesCookie = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+    path: '/'
+};
 
 export const login = async (req, res) => {
     try {
-
-        // Obtenemos las credenciales enviadas
         const { usuario, contrasena } = req.body;
 
-        // Buscamos el usuario por su nombre de usuario
+        // Busco el usuario por su nombre de usuario
         const result = await pool.query(
-            `
-            SELECT *
+            `SELECT id, usuario, contrasena
             FROM usuarios
-            WHERE usuario = $1
-            `,
+            WHERE usuario = $1`,
             [usuario]
         );
 
-        // Si no existe el usuario
+        // Uso el mismo mensaje para no revelar si el usuario existe
         if (result.rowCount === 0) {
             return res.status(401).json({
                 success: false,
-                error: 'El usuario no esta registrado'
+                error: 'Usuario o contraseña incorrectos'
             });
         }
 
-        // Comparamos la contrasena ingresada con el hash almacenado en la base de datos
+        const usuarioEncontrado = result.rows[0];
+
+        // Comparo la contraseña con el hash guardado
         const contrasenaValida = await bcrypt.compare(
             contrasena,
-            result.rows[0].contrasena
+            usuarioEncontrado.contrasena
         );
 
-        // Si la contrasena no coincide
         if (!contrasenaValida) {
             return res.status(401).json({
                 success: false,
-                error: 'contrasena incorrecta'
+                error: 'Usuario o contraseña incorrectos'
             });
         }
 
-        // Generamos el JWT con el ID del usuario
+        // Creo el token para identificar la sesión
         const token = await generarTokenDeAcceso({
-            id: result.rows[0].id
+            id: usuarioEncontrado.id
         });
 
-        // Guardamos el token en una cookie HTTP-Only
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production'
-                ? 'none'
-                : 'lax',
-            maxAge: 24 * 60 * 60 * 1000
-        });
+        res.cookie('token', token, opcionesCookie);
 
-        // Devolvemos solamente los datos necesarios
         return res.status(200).json({
             success: true,
             usuario: {
-                id: result.rows[0].id,
-                usuario: result.rows[0].usuario
+                id: usuarioEncontrado.id,
+                usuario: usuarioEncontrado.usuario
             }
         });
-
     } catch (error) {
+        console.error('Error al iniciar sesión:', error.message);
+        return res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor'
+        });
+    }
+};
 
-        console.error('Error al iniciar sesión:', error);
+export const register = async (req, res) => {
+    try {
+        const { nombre, apellido, usuario, mail, contrasena } = req.body;
+
+        // Compruebo si el usuario o el correo ya están registrados
+        const existeUsuario = await pool.query(
+            `SELECT id
+            FROM usuarios
+            WHERE usuario = $1 OR LOWER(mail) = LOWER($2)
+            LIMIT 1`,
+            [usuario, mail]
+        );
+
+        if (existeUsuario.rowCount > 0) {
+            return res.status(409).json({
+                success: false,
+                error: 'El nombre de usuario o el correo ya están registrados'
+            });
+        }
+
+        // Encripto la contraseña antes de guardarla
+        const hashContrasena = await bcrypt.hash(contrasena, 12);
+
+        // Guardo el usuario y devuelvo solo los datos necesarios
+        const result = await pool.query(
+            `INSERT INTO usuarios (
+                nombre,
+                apellido,
+                usuario,
+                mail,
+                contrasena
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, nombre, apellido, usuario, mail`,
+            [nombre, apellido, usuario, mail.toLowerCase(), hashContrasena]
+        );
+
+        const nuevoUsuario = result.rows[0];
+
+        const token = await generarTokenDeAcceso({
+            id: nuevoUsuario.id
+        });
+
+        res.cookie('token', token, opcionesCookie);
+
+        return res.status(201).json({
+            success: true,
+            usuario: nuevoUsuario
+        });
+    } catch (error) {
+        // PostgreSQL usa 23505 cuando se viola una restricción UNIQUE
+        if (error.code === '23505') {
+            return res.status(409).json({
+                success: false,
+                error: 'El nombre de usuario o el correo ya están registrados'
+            });
+        }
+
+        console.error('Error al registrar el usuario:', error.message);
 
         return res.status(500).json({
             success: false,
@@ -75,148 +136,46 @@ export const login = async (req, res) => {
     }
 };
 
-
-export const register = async (req, res) => {
-
-    // Obtenemos los datos enviados
-    const {
-        nombre,
-        apellido,
-        usuario,
-        mail,
-        contrasena
-    } = req.body;
-
-    try {
-
-        // Verificamos si ya existe un usuario con ese nombre de usuario
-        const existeUsuario = await pool.query(
-            'SELECT id FROM usuarios WHERE usuario = $1',
-            [usuario]
-        );
-
-        if (existeUsuario.rowCount > 0) {
-            return res.status(400).json({
-                error: 'El usuario ya existe'
-            });
-        }
-
-        // Hasheamos la contrasena antes de guardarla
-        const hashcontrasena = await bcrypt.hash(contrasena, 12);
-
-        // Creamos el usuario
-        const result = await pool.query(
-            `
-            INSERT INTO usuarios (
-                nombre,
-                apellido,
-                usuario,
-                mail,
-                contrasena
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, nombre, apellido, mail, usuario
-            `,
-            [
-                nombre,
-                apellido,
-                usuario,
-                mail,
-                hashcontrasena
-            ]
-        );
-
-        // Generamos el JWT
-        const token = await generarTokenDeAcceso({
-            id: result.rows[0].id
-        });
-
-        // Guardamos el token en una cookie HTTP-Only
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production'
-                ? 'none'
-                : 'lax',
-            maxAge: 24 * 60 * 60 * 1000
-        });
-
-        return res.status(200).json({
-            success: true,
-            usuario: {
-                id: result.rows[0].id,
-                nombre: result.rows[0].nombre,
-                apellido: result.rows[0].apellido,
-                usuario: result.rows[0].usuario,
-                mail: result.rows[0].mail
-            }
-        });
-
-    } catch (error) {
-
-        console.error('Error al registrar el usuario:', error);
-
-        return res.status(500).json({
-            error: 'Error al registrar el usuario'
-        });
-    }
-};
-
-
 export const logout = (req, res) => {
-
-    // Eliminamos la cookie del token usando la misma configuración de producción
     res.clearCookie('token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production'
-            ? 'none'
-            : 'lax'
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
     });
 
-    return res.json({
+    return res.status(200).json({
         success: true,
         message: 'Sesión cerrada'
     });
 };
 
-
 export const getProfile = async (req, res) => {
-
     try {
-
         const result = await pool.query(
-            `
-            SELECT
-                id,
-                nombre,
-                apellido,
-                mail
+            `SELECT id, nombre, apellido, usuario, mail
             FROM usuarios
-            WHERE id = $1
-            `,
+            WHERE id = $1`,
             [req.userId]
         );
 
-        if (result.rows.length === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 error: 'Usuario no encontrado'
             });
         }
 
         return res.status(200).json({
+            success: true,
             usuario: result.rows[0]
         });
-
     } catch (error) {
-
-        console.error(
-            'Error al obtener el perfil:',
-            error
-        );
+        console.error('Error al obtener el perfil:', error.message);
 
         return res.status(500).json({
-            error: 'Error al obtener el perfil'
+            success: false,
+            error: 'Error interno del servidor'
         });
     }
 };

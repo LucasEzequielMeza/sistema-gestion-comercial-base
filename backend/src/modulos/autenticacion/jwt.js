@@ -5,25 +5,30 @@ dotenv.config();
 
 const SECRET = process.env.JWT_SECRET;
 
-if (!SECRET) {
-    throw new Error('JWT_SECRET no está definido en las variables de entorno');
-};
+// Compruebo que exista una clave suficientemente larga
+if (!SECRET || Buffer.byteLength(SECRET, 'utf8') < 32) {
+    throw new Error('JWT_SECRET debe tener al menos 32 bytes');
+}
 
-export const generarTokenDeAcceso = (payload) => { /*El payload es un objeto que contiene la información 
- que deseas incluir en el token, como el ID del usuario, el nombre de usuario, etc.*/
-
-    // Genera un token de acceso con una duración de 1 día
+// Genero el token de acceso con una duración de un día
+export const generarTokenDeAcceso = (payload) => {
     return new Promise((resolve, reject) => {
         jwt.sign(
-            payload, 
-            SECRET, // Clave secreta para firmar el token
-            { expiresIn: '1d' },
-            (err, token) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(token);
-                }}
+            payload,
+            SECRET,
+            {
+                algorithm: 'HS256',
+                expiresIn: '1d',
+                issuer: 'sistema-gestion-comercial',
+                audience: 'sistema-gestion-comercial'
+            },
+            (error, token) => {
+                if (error) {
+                    return reject(error);
+                }
+
+                resolve(token);
+            }
         );
     });
 };

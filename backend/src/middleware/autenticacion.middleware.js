@@ -1,34 +1,42 @@
 import jwt from 'jsonwebtoken';
 
-const SECRET = process.env.JWT_SECRET;
+export const estaAutenticado = (roles = []) => {
+    return (req, res, next) => {
+        // Busco el token de la sesión en la cookie
+        const token = req.cookies?.token;
 
-export const estaAutenticado = (roles = []) => async (req, res, next) => {
-
-    // Obtenemos el token almacenado en la cookie
-    const token = req.cookies.token;
-
-    // Si no existe el token, el usuario no está autenticado
-    if (!token) {
-        return res.status(401).json({
-            message: 'No estás autenticado'
-        });
-    }
-
-    // Verificamos que el token sea válido
-    jwt.verify(token, SECRET, async (err, decoded) => {
-
-        // Si el token es inválido o expiró
-        if (err) {
+        if (!token) {
             return res.status(401).json({
-                message: 'Token inválido o expirado'
+                success: false,
+                message: 'Debés iniciar sesión'
             });
         }
 
-        /*Guardamos el ID del usuario autenticado decoded contiene 
-        el payload que guardamos al crear el token*/
-        req.userId = decoded.id;
+        // Verifico el token y acepto únicamente el algoritmo esperado
+        jwt.verify(token, process.env.JWT_SECRET, {
+            algorithms: ['HS256'],
+            issuer: 'sistema-gestion-comercial',
+            audience: 'sistema-gestion-comercial'
+        }, (error, decoded) => {
+            if (error || !decoded || typeof decoded !== 'object' || !decoded.id) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'La sesión es inválida o expiró'
+                });
+            }
 
-        next();
-    });
+            // Guardo el ID para que lo usen los controladores
+            req.userId = decoded.id;
+
+            // Los roles se implementarán cuando definamos los permisos
+            if (roles.length > 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Los permisos todavía no están configurados'
+                });
+            }
+
+            next();
+        });
+    };
 };
-
