@@ -10,6 +10,7 @@ import StockDetalle from './Components/stock/StockDetalle'
 import Navbar from './Components/navbar/Navbar'
 import Container from './Components/UI/Container'
 import RutaProtegida from './Components/autorizacion/RutaProtegida'
+import ProductosInactivosPage from './Pages/ProductosInactivosPage'
 
 function App() {
 
@@ -56,6 +57,7 @@ function App() {
                             <Route path="/productos/nuevo" element={<ProductosForm />}/>
                             <Route path="/productos/:id/edit" element={<ProductosForm />}/>
                             <Route path="/producto/detalle/:id" element={<ProductosDetalle />}/>
+                            <Route path="/productos/inactivos" element={<ProductosInactivosPage />}/>
 
                             {/* Stock */}
                             <Route path="/stock" element={<StockPage />}/>

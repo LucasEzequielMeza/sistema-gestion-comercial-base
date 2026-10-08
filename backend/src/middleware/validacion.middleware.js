@@ -1,8 +1,6 @@
-export const validateSchema = (schema) => {
-    
-    return (req, res, next) => {
-        // Valido los datos que llegan desde el cliente
-        const resultado = schema.safeParse(req.body);
+export const validateSchema = (schema, fuente = 'body') => {
+return (req, res, next) => {
+    const resultado = schema.safeParse(req[fuente]);
 
         if (!resultado.success) {
             const errores = {};
@@ -10,10 +8,7 @@ export const validateSchema = (schema) => {
             resultado.error.issues.forEach((error) => {
                 const campo = error.path.join('.') || 'general';
 
-                if (!errores[campo]) {
-                    errores[campo] = [];
-                }
-
+                if (!errores[campo]) errores[campo] = [];
                 errores[campo].push(error.message);
             });
 
@@ -24,8 +19,17 @@ export const validateSchema = (schema) => {
             });
         }
 
-        // Reemplazo los datos originales por los que validó Zod
-        req.body = resultado.data;
+        if (fuente === 'body') {
+            req.body = resultado.data;
+        }
+
+        if (fuente === 'params') {
+            req.params = resultado.data;
+        }
+
+        if (fuente === 'query') {
+            res.locals.queryValidada = resultado.data;
+        }
 
         next();
     };

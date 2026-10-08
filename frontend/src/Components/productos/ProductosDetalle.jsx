@@ -36,7 +36,7 @@ function ProductosDetalle() {
     return (
         <div>
 
-            <div className="w-full max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 my-6">
+            <div className="w-full max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 my-6">
                 <h1 className="text-2xl font-bold text-[#1C1917]">Detalle del producto</h1>
                 <Button onClick={() => navigate('/productos')}>Volver</Button>
             </div>
@@ -49,7 +49,7 @@ function ProductosDetalle() {
                 </div>
             )}
 
-            <Card className="w-full max-w-3xl mx-auto">
+            <Card className="w-full max-w-2xl mx-auto p-6">
                 {producto.imagen && (
                     <div className="flex justify-center mb-6">
                         <img
@@ -60,7 +60,9 @@ function ProductosDetalle() {
                     </div>
                 )}
 
-                <h2 className="text-3xl font-bold mb-6">{producto.nombre}</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-6 break-words">
+                    {producto.nombre}
+                </h2>
 
                 <div className="space-y-3">
                     <p><span className="font-bold">Código:</span>{' '}{producto.codigo || 'Sin código'}</p>

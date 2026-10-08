@@ -7,14 +7,16 @@ function ProductosCard({
     producto,
     desactivarProducto,
     activarProducto,
-    modoBusqueda
+    eliminarProducto,
+    modoBusqueda,
+    modoInactivo = false
 }) {
 
     const navigate = useNavigate()
 
     return (
 
-        <Card className="w-full min-h-[350px] flex flex-col">
+        <Card className="w-full h-full min-h-[380px] flex flex-col">
             <div className="flex-1">
                 {producto.imagen && (
                     <img
@@ -37,14 +39,24 @@ function ProductosCard({
                     Ver detalle
                 </Button>
 
-                {!modoBusqueda && (
+                {!modoBusqueda && !modoInactivo && (
                     <Button onClick={() => navigate(`/productos/${producto.id}/edit`)}>
                         Editar
                     </Button>
                 )}
 
-                <Button onClick={() => desactivarProducto(producto.id)}>
-                    Desactivar
+                {modoInactivo ? (
+                    <Button onClick={() => activarProducto(producto.id)}>
+                        Reactivar
+                    </Button>
+                ) : (
+                    <Button onClick={() => desactivarProducto(producto.id)}>
+                        Desactivar
+                    </Button>
+                )}
+
+                <Button onClick={() => eliminarProducto(producto.id)}>
+                    Eliminar definitivamente
                 </Button>
             </div>
         </Card>

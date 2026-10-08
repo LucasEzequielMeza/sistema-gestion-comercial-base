@@ -11,12 +11,15 @@ function ProductosPage() {
         productoError,
         buscarProductos,
         desactivarProducto,
-        activarProducto
+        activarProducto,
+        eliminarProducto
     } = useProducto()
 
     const navigate = useNavigate()
     const [busqueda, setBusqueda] = useState('')
     const [resultadosBusqueda, setResultadosBusqueda] = useState([])
+    const [productoAEliminar, setProductoAEliminar] = useState(null)
+    const [mensajeAlerta, setMensajeAlerta] = useState('')
 
     useEffect(() => {
 
@@ -72,6 +75,24 @@ function ProductosPage() {
 
     }
 
+    const productoEliminado = async () => {
+        if (!productoAEliminar) return
+
+        const respuesta = await eliminarProducto(productoAEliminar.id)
+        setProductoAEliminar(null)
+
+        if (respuesta) {
+            if (busqueda.trim() === '') {
+                obtenerProductos()
+            } else {
+                const resultados = await buscarProductos(busqueda)
+                setResultadosBusqueda(resultados || [])
+            }
+        } else {
+            setMensajeAlerta('No se puede eliminar este producto porque tiene registros asociados.')
+        }
+    }
+
     const productosMostrar =
         busqueda.trim() === ''
             ? productos
@@ -103,32 +124,83 @@ function ProductosPage() {
 
             </div>
 
-            {productoError.length > 0 && (
-                <div className="mb-4">
-                    {productoError.map((error, index) => (
-                        <p key={index} className="text-red-500">
-                            {error.message || error.error || error}
-                        </p>
-                    ))}
-                </div>
-
-            )}
-
             {productosMostrar.length === 0 ? (
                 <p className="text-[#57534E]">
                     No hay productos para mostrar.
                 </p>
             ) : (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">
                     {productosMostrar.map((producto) => (
                         <ProductosCard
                             key={producto.id}
                             producto={producto}
                             desactivarProducto={productoDesactivado}
                             activarProducto={productoActivado}
+                            eliminarProducto={() => setProductoAEliminar(producto)}
                             modoBusqueda={busqueda.trim() !== ''}
                         />
                     ))}
+                </div>
+            )}
+
+            {mensajeAlerta && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+                        <h2 className="text-xl font-bold text-[#1C1917]">
+                            No se puede eliminar
+                        </h2>
+                        <p className="mt-3 text-sm text-[#57534E]">
+                            {mensajeAlerta}
+                        </p>
+                        <div className="mt-6 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setMensajeAlerta('')}
+                                className="rounded-md bg-[#13100F] px-4 py-2 text-sm font-semibold text-white hover:bg-[#26211F]"
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {productoAEliminar && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+                        <h2 className="text-xl font-bold text-[#1C1917]">
+                            Eliminar producto
+                        </h2>
+
+                        <p className="mt-3 text-sm text-[#57534E]">
+                            ¿Estás seguro de que querés eliminar definitivamente
+                            <span className="font-semibold text-[#1C1917]">
+                                {' '}{productoAEliminar.nombre}
+                            </span>?
+                        </p>
+
+                        <p className="mt-2 text-sm text-red-600">
+                            Esta acción no se puede deshacer.
+                        </p>
+
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setProductoAEliminar(null)}
+                                className="rounded-md border border-[#D6D3D1] px-4 py-2 text-sm font-medium text-[#44403C] hover:bg-[#F5F5F4]"
+                            >
+                                Cancelar
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={productoEliminado}
+                                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                            >
+                                Eliminar producto
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-
 import {login, register, logout, getProfile} from './autenticacion.controller.js';
 import { estaAutenticado } from '../../middleware/autenticacion.middleware.js';
 import { validateSchema } from '../../middleware/validacion.middleware.js';

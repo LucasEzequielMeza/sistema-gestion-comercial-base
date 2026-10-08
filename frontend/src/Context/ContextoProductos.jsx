@@ -18,6 +18,7 @@ export function ProductoProvider({ children }) {
     const [producto, setProducto] = useState(null)
     const [productoError, setProductoError] = useState([])
     const [cargando, setCargando] = useState(false)
+    const [productosInactivos, setProductosInactivos] = useState([])
 
     const obtenerProductos = async () => {
 
@@ -270,6 +271,55 @@ export function ProductoProvider({ children }) {
 
     }
 
+    const eliminarProducto = async (id) => {
+
+        try {
+
+        setProductoError([]);
+
+        await axios.delete(`/productos/${id}`);
+
+        setProductos((productosActuales) =>
+
+        productosActuales.filter((productoItem) => productoItem.id !== id)
+
+        );
+
+        return true;
+
+        } catch (error) {
+
+        console.error('Error al eliminar el producto:', error);
+
+        setProductoError([
+
+        error.response?.data?.message ||
+
+        'Error al eliminar el producto'
+
+        ]);
+
+        return false;
+
+        }
+    };
+
+    const obtenerProductosInactivos = async () => {
+        try {
+            setProductoError([])
+            const respuesta = await axios.get('/productos/inactivos')
+            setProductosInactivos(respuesta.data)
+            return respuesta.data
+        } catch (error) {
+            console.error('Error al obtener productos inactivos:', error)
+            setProductoError([
+                error.response?.data?.message ||
+                'Error al obtener productos inactivos'
+            ])
+            return null
+        }
+    }
+
     const limpiarProductoError = () => {
 
         setProductoError([])
@@ -284,6 +334,7 @@ export function ProductoProvider({ children }) {
                 producto,
                 productoError,
                 cargando,
+                productosInactivos,
                 obtenerProductos,
                 obtenerProductoPorId,
                 crearProducto,
@@ -291,7 +342,9 @@ export function ProductoProvider({ children }) {
                 buscarProductos,
                 desactivarProducto,
                 activarProducto,
-                limpiarProductoError
+                eliminarProducto,
+                limpiarProductoError,
+                obtenerProductosInactivos
             }}
         >
 
