@@ -8,7 +8,7 @@ import { useAuth } from '../../Context/ContextoAutorizacion'
 function Navbar({ menuAbierto, setMenuAbierto }) {
 
     const location = useLocation()
-
+ 
     const {
         logout,
         usuario,

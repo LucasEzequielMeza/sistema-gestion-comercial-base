@@ -8,6 +8,7 @@ export const obtenerStock = async (req, res) => {
         const result = await pool.query(
             `SELECT id, nombre, codigo, stock, stock_minimo, activo
             FROM productos
+            WHERE activo = true
             ORDER BY nombre ASC`
         );
 
@@ -69,17 +70,23 @@ export const aumentarStock = async (req, res) => {
     try {
 
         // Verificamos que la cantidad sea válida
-        if (!cantidad || cantidad <= 0) {
+        if (
+            cantidad === undefined ||
+            cantidad === null ||
+            cantidad === '' ||
+            !Number.isFinite(Number(cantidad)) ||
+            Number(cantidad) <= 0
+        ) {
             return res.status(400).json({
-                message: 'La cantidad debe ser mayor a 0'
-            });
+                message: 'La cantidad debe ser un número mayor a cero'
+            })
         }
 
         // Verificamos que se haya indicado un motivo
-        if (!motivo) {
+        if (!motivo || !motivo.trim()) {
             return res.status(400).json({
                 message: 'El motivo es obligatorio'
-            });
+            })
         }
 
         // Iniciamos una transacción
@@ -103,6 +110,13 @@ export const aumentarStock = async (req, res) => {
         }
 
         const producto = productoResult.rows[0];
+
+        if (!producto.activo) {
+            await client.query('ROLLBACK')
+            return res.status(400).json({
+                message: 'No se puede modificar el stock de un producto inactivo'
+            })
+        }
 
         const stockAnterior = Number(producto.stock);
         const stockNuevo = stockAnterior + Number(cantidad);
@@ -179,17 +193,23 @@ export const disminuirStock = async (req, res) => {
     try {
 
         // Verificamos que la cantidad sea válida
-        if (!cantidad || cantidad <= 0) {
+        if (
+            cantidad === undefined ||
+            cantidad === null ||
+            cantidad === '' ||
+            !Number.isFinite(Number(cantidad)) ||
+            Number(cantidad) <= 0
+        ) {
             return res.status(400).json({
-                message: 'La cantidad debe ser mayor a 0'
-            });
+                message: 'La cantidad debe ser un número mayor a cero'
+            })
         }
 
         // Verificamos que se haya indicado un motivo
-        if (!motivo) {
+       if (!motivo || !motivo.trim()) {
             return res.status(400).json({
                 message: 'El motivo es obligatorio'
-            });
+            })
         }
 
         // Iniciamos una transacción
@@ -213,6 +233,13 @@ export const disminuirStock = async (req, res) => {
         }
 
         const producto = productoResult.rows[0];
+
+        if (!producto.activo) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                message: 'No se puede modificar el stock de un producto inactivo'
+            });
+        }
 
         const stockAnterior = Number(producto.stock);
         const stockNuevo = stockAnterior - Number(cantidad);
@@ -310,3 +337,159 @@ export const obtenerProductosConStockBajo = async (req, res) => {
         });
     }
 };
+
+// Ajusto el stock según el recuento físico
+export const ajustarStock = async (req, res) => {
+    const { id } = req.params
+    const { cantidad, motivo } = req.body
+    const usuarioId = req.userId
+    const client = await pool.connect()
+
+    try {
+        if (
+            cantidad === undefined ||
+            cantidad === null ||
+            cantidad === '' ||
+            !Number.isFinite(Number(cantidad)) ||
+            Number(cantidad) < 0
+        ) {
+            return res.status(400).json({
+                message: 'El stock debe ser un número igual o mayor a cero'
+            })
+        }
+
+        if (!motivo || !motivo.trim()) {
+            return res.status(400).json({
+                message: 'El motivo es obligatorio'
+            })
+        }
+
+        await client.query('BEGIN')
+
+        const productoResult = await client.query(
+            `SELECT id, nombre, codigo, stock, stock_minimo, activo
+            FROM productos
+            WHERE id = $1
+            FOR UPDATE`,
+            [id]
+        )
+
+        if (productoResult.rows.length === 0) {
+            await client.query('ROLLBACK')
+            return res.status(404).json({
+                message: 'Producto no encontrado'
+            })
+        }
+
+        const producto = productoResult.rows[0]
+
+        if (!producto.activo) {
+            await client.query('ROLLBACK')
+            return res.status(400).json({
+                message: 'No se puede modificar el stock de un producto inactivo'
+            })
+        }
+
+        const stockAnterior = Number(producto.stock)
+        const stockNuevo = Number(cantidad)
+        const diferencia = Math.abs(stockNuevo - stockAnterior)
+
+        if (diferencia === 0) {
+            await client.query('ROLLBACK')
+            return res.status(400).json({
+                message: 'El stock ingresado es igual al stock actual'
+            })
+        }
+
+        const result = await client.query(
+            `UPDATE productos
+            SET stock = $1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            RETURNING id, nombre, codigo, stock, stock_minimo, activo`,
+            [stockNuevo, id]
+        )
+
+        await client.query(
+            `INSERT INTO movimientos_stock (
+                producto_id,
+                tipo,
+                cantidad,
+                motivo,
+                stock_anterior,
+                stock_nuevo,
+                usuario_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+                id,
+                'ajuste',
+                diferencia,
+                motivo.trim(),
+                stockAnterior,
+                stockNuevo,
+                usuarioId
+            ]
+        )
+
+        await client.query('COMMIT')
+
+        res.status(200).json({
+            message: 'Stock ajustado exitosamente',
+            producto: result.rows[0]
+        })
+    } catch (error) {
+        await client.query('ROLLBACK')
+        console.error('Error al ajustar el stock:', error)
+        res.status(500).json({
+            message: 'Error al ajustar el stock'
+        })
+    } finally {
+        client.release()
+    }
+}
+
+export const actualizarStockMinimo = async (req, res) => {
+    const { id } = req.params
+    const { stock_minimo } = req.body
+
+    if (
+        stock_minimo === undefined ||
+        stock_minimo === null ||
+        stock_minimo === '' ||
+        !Number.isFinite(Number(stock_minimo)) ||
+        Number(stock_minimo) < 0
+    ) {
+        return res.status(400).json({
+            message: 'El stock mínimo debe ser un número igual o mayor a cero'
+        })
+    }
+
+    try {
+        const result = await pool.query(
+            `UPDATE productos
+            SET stock_minimo = $1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            RETURNING id, nombre, codigo, stock, stock_minimo, activo`,
+            [Number(stock_minimo), id]
+        )
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                message: 'Producto no encontrado'
+            })
+        }
+
+        res.status(200).json({
+            message: 'Stock mínimo actualizado exitosamente',
+            producto: result.rows[0]
+        })
+    } catch (error) {
+        console.error('Error al actualizar el stock mínimo:', error)
+
+        res.status(500).json({
+            message: 'Error al actualizar el stock mínimo'
+        })
+    }
+}

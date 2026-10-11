@@ -5,7 +5,9 @@ import {
     obtenerStockPorProducto,
     aumentarStock,
     disminuirStock,
-    obtenerProductosConStockBajo
+    obtenerProductosConStockBajo,
+    ajustarStock,
+    actualizarStockMinimo
 } from './stock.controller.js';
 
 import { estaAutenticado } from '../../middleware/autenticacion.middleware.js';
@@ -16,10 +18,14 @@ router.get('/', estaAutenticado(), obtenerStock);
 
 router.get('/bajo', estaAutenticado(), obtenerProductosConStockBajo);
 
+router.patch('/minimo/:id', estaAutenticado(), actualizarStockMinimo)
+
 router.get('/:id', estaAutenticado(), obtenerStockPorProducto);
 
 router.post('/aumentar/:id', estaAutenticado(), aumentarStock);
 
 router.post('/disminuir/:id', estaAutenticado(), disminuirStock);
+
+router.post('/ajustar/:id', estaAutenticado(), ajustarStock);
 
 export default router;

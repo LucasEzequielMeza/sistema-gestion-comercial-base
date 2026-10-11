@@ -8,7 +8,7 @@ import {
     buscarProductos,
     desactivarProducto,
     activarProducto,
-    eliminarProducto
+    eliminarProducto,
 } from './productos.controller.js';
 import {
     crearProductoSchema,

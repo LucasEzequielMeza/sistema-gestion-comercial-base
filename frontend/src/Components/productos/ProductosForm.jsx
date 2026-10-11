@@ -25,8 +25,8 @@ function ProductosForm() {
             precio_compra: '',
             precio_venta: '',
             porcentaje_ganancia: 25,
-            stock: 0,
-            stock_minimo: 0
+            stock: '',
+            stock_minimo: ''
         }
     })
 
