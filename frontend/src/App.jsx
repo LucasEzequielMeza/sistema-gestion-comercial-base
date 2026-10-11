@@ -34,8 +34,8 @@ function App() {
             <main
                 className={
                     esPaginaAutenticacion
-                        ? "min-h-screen"
-                        : `min-h-screen transition-all duration-300 ${
+                        ? "min-h-screen bg-white"
+                        : `min-h-screen bg-white transition-all duration-300 ${
                             menuAbierto
                                 ? "pt-[330px] md:pt-0 md:ml-64"
                                 : "pt-14 md:pt-0 md:ml-20"

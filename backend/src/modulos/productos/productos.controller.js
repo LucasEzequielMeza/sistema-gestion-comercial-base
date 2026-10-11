@@ -64,36 +64,34 @@ export const crearProducto = async (req, res, next) => {
 };
 
 export const obtenerProductos = async (req, res) => {
-
     try {
+        const result = await pool.query(
+            `SELECT
+                productos.id,
+                productos.nombre,
+                productos.descripcion,
+                productos.imagen,
+                productos.codigo,
+                productos.categoria_id,
+                categorias.nombre AS categoria_nombre,
+                productos.precio_compra,
+                productos.precio_venta,
+                productos.stock,
+                productos.stock_minimo,
+                productos.activo,
+                productos.created_at,
+                productos.updated_at
+            FROM productos
+            LEFT JOIN categorias
+                ON productos.categoria_id = categorias.id
+            ORDER BY productos.nombre ASC`
+        );
 
-    const result = await pool.query(
-    `SELECT
-                    productos.id,
-                    productos.nombre,
-                    productos.descripcion,
-                    productos.imagen,
-                    productos.codigo,
-                    productos.categoria_id,
-                    categorias.nombre AS categoria_nombre,
-                    productos.precio_compra,
-                    productos.precio_venta,
-                    productos.stock,
-                    productos.stock_minimo,
-                    productos.activo,
-                    productos.created_at,
-                    productos.updated_at
-                FROM productos
-                LEFT JOIN categorias
-                    ON productos.categoria_id = categorias.id
-                WHERE productos.activo = true
-                ORDER BY productos.nombre ASC`
-    );
-
-    return res.status(200).json(result.rows);
+        return res.status(200).json(result.rows);
 
     } catch (error) {
         console.error('Error al obtener los productos:', error.message);
+
         return res.status(500).json({
             success: false,
             message: 'Error al obtener los productos'

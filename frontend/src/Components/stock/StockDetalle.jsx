@@ -150,23 +150,26 @@ function StockDetalle({ menuAbierto }) {
 
     if (!stockProducto) {
         return (
-            <div className="flex justify-center mt-10">
-                <p>Cargando stock...</p>
+            <div className="flex min-h-[60vh] items-center justify-center">
+                <div className="flex flex-col items-center gap-3 text-stone-500">
+                    <div className="h-10 w-10 animate-spin rounded-full border-4 border-stone-200 border-t-stone-800" />
+                    <p className="font-medium">Cargando stock...</p>
+                </div>
 
                 {mensajeAlerta && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-                        <div className={`w-full max-w-md rounded-xl bg-white p-6 shadow-2xl transition-transform duration-300 ${desplazamientoAlerta}`}>
-                            <h2 className="text-xl font-bold text-[#1C1917]">
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/50 p-4 backdrop-blur-sm">
+                        <div className={`w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl transition-transform duration-300 ${desplazamientoAlerta}`}>
+                            <h2 className="text-xl font-bold text-stone-900">
                                 No se pudo cargar el stock
                             </h2>
-                            <p className="mt-3 text-sm text-[#57534E]">
+                            <p className="mt-3 text-sm leading-6 text-stone-600">
                                 {mensajeAlerta}
                             </p>
                             <div className="mt-6 flex justify-end">
                                 <button
                                     type="button"
                                     onClick={() => setMensajeAlerta('')}
-                                    className="rounded-md bg-[#13100F] px-4 py-2 text-sm font-semibold text-white hover:bg-[#26211F]"
+                                    className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
                                 >
                                     Entendido
                                 </button>
@@ -182,62 +185,110 @@ function StockDetalle({ menuAbierto }) {
         Number(stockProducto.stock) <= Number(stockProducto.stock_minimo)
 
     return (
-        <div>
-            <div className="w-full max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 my-6">
+        <div className="mx-auto w-full max-w-5xl space-y-6 pb-8">
+            <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p className="text-sm font-medium text-stone-500">
+                        Inventario / Stock
+                    </p>
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
+                        Gestión de stock
+                    </h1>
+                    <p className="mt-1 text-sm text-stone-500">
+                        Administrá las existencias y las alertas de este producto.
+                    </p>
+                </div>
+
                 <Button onClick={() => navigate('/stock')}>
-                    Volver
+                    Volver al stock
                 </Button>
             </div>
 
             {mensaje && (
-                <div className="flex justify-center mb-6">
-                    <p className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 font-semibold text-green-700 text-center">
-                        {mensaje}
-                    </p>
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 shadow-sm">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold">
+                        ✓
+                    </div>
+                    <p className="text-sm font-medium leading-6">{mensaje}</p>
                 </div>
             )}
 
-            <Card className="w-full max-w-3xl mx-auto mt-6">
-                <h2 className="text-2xl font-bold mb-2">
-                    Stock mínimo
-                </h2>
-
-                <p className="text-sm text-zinc-600 mb-5">
-                    {stockProducto.nombre} · Código: {stockProducto.codigo || 'Sin código'}
-                </p>
-
-                <div className="mb-5 rounded-lg bg-zinc-100 p-4">
-                    <p className="text-sm text-zinc-600">Stock actual</p>
-                    <p className="text-2xl font-bold text-[#1C1917]">
-                        {formatoStock(stockProducto.stock)}
+            <Card className="mx-auto w-full max-w-3xl">
+                <div className="mb-6 border-b border-stone-100 pb-5">
+                    <p className="text-sm font-medium text-stone-500">
+                        Producto seleccionado
                     </p>
+                    <h2 className="mt-1 text-xl font-bold text-stone-900">
+                        {stockProducto.nombre}
+                    </h2>
+                    <p className="mt-1 text-sm text-stone-500">
+                        Código: {stockProducto.codigo || 'Sin código'}
+                    </p>
+                </div>
+
+                <div className={`mb-6 rounded-2xl border p-5 ${
+                    stockBajo
+                        ? 'border-red-200 bg-red-50'
+                        : 'border-stone-200 bg-stone-50'
+                }`}>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className={`text-sm font-medium ${
+                                stockBajo ? 'text-red-700' : 'text-stone-500'
+                            }`}>
+                                Stock actual
+                            </p>
+                            <p className={`mt-1 text-3xl font-bold tracking-tight ${
+                                stockBajo ? 'text-red-700' : 'text-stone-900'
+                            }`}>
+                                {formatoStock(stockProducto.stock)}
+                            </p>
+                        </div>
+
+                        <span className={`inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs font-semibold ${
+                            stockBajo
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                            {stockBajo ? 'Stock bajo' : 'Stock suficiente'}
+                        </span>
+                    </div>
 
                     {stockBajo && (
-                        <p className="mt-2 text-sm font-semibold text-red-600">
+                        <p className="mt-3 border-t border-red-200 pt-3 text-sm leading-5 text-red-700">
                             El producto está en el nivel mínimo de stock o por debajo.
                         </p>
                     )}
                 </div>
 
-                <form onSubmit={guardarStockMinimo}>
-                    <Label htmlFor="stockMinimo">
-                        Cantidad mínima para la alerta
-                    </Label>
-
-                    <Input
-                        id="stockMinimo"
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={stockMinimo}
-                        onChange={(e) => setStockMinimo(e.target.value)}
-                    />
-
-                    <p className="mt-1 text-sm text-zinc-500">
-                        Se mostrará una alerta cuando el stock actual sea igual o inferior a este valor.
+                <div className="mb-5">
+                    <h3 className="text-lg font-bold text-stone-900">
+                        Alerta de stock mínimo
+                    </h3>
+                    <p className="mt-1 text-sm leading-5 text-stone-500">
+                        Definí la cantidad a partir de la cual necesitás revisar las existencias.
                     </p>
+                </div>
 
-                    <div className="flex justify-center mt-5">
+                <form onSubmit={guardarStockMinimo} className="space-y-4">
+                    <div>
+                        <Label htmlFor="stockMinimo">
+                            Cantidad mínima para la alerta
+                        </Label>
+                        <Input
+                            id="stockMinimo"
+                            type="number"
+                            step="0.001"
+                            min="0"
+                            value={stockMinimo}
+                            onChange={(e) => setStockMinimo(e.target.value)}
+                        />
+                        <p className="mt-2 text-xs leading-5 text-stone-500">
+                            Se mostrará una alerta cuando el stock actual sea igual o inferior a este valor.
+                        </p>
+                    </div>
+
+                    <div className="flex justify-end border-t border-stone-100 pt-4">
                         <Button type="submit" disabled={guardandoMinimo}>
                             {guardandoMinimo ? 'Guardando...' : 'Guardar stock mínimo'}
                         </Button>
@@ -245,53 +296,68 @@ function StockDetalle({ menuAbierto }) {
                 </form>
             </Card>
 
-            <Card className="w-full max-w-3xl mx-auto mt-6 mb-8">
-                <h2 className="text-2xl font-bold mb-6">
-                    Movimiento de stock
-                </h2>
+            <Card className="mx-auto w-full max-w-3xl">
+                <div className="mb-6 border-b border-stone-100 pb-5">
+                    <h2 className="text-xl font-bold text-stone-900">
+                        Movimiento de stock
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-stone-500">
+                        Registrá una entrada, una salida o corregí la cantidad real disponible.
+                    </p>
+                </div>
 
-                <form onSubmit={realizarMovimiento}>
-                    <Label htmlFor="tipoMovimiento">
-                        Tipo de movimiento
-                    </Label>
+                <form onSubmit={realizarMovimiento} className="space-y-5">
+                    <div>
+                        <Label htmlFor="tipoMovimiento">
+                            Tipo de movimiento
+                        </Label>
+                        <select
+                            id="tipoMovimiento"
+                            value={tipoMovimiento}
+                            onChange={(e) => setTipoMovimiento(e.target.value)}
+                            className="my-2 block w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-800 outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200"
+                        >
+                            <option value="entrada">Aumentar stock</option>
+                            <option value="salida">Disminuir stock</option>
+                            <option value="ajuste">Ajustar al stock real</option>
+                        </select>
+                    </div>
 
-                    <select
-                        id="tipoMovimiento"
-                        value={tipoMovimiento}
-                        onChange={(e) => setTipoMovimiento(e.target.value)}
-                        className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full text-[#1C1917] focus:outline-none focus:border-[#13100F]"
-                    >
-                        <option value="entrada">Aumentar stock</option>
-                        <option value="salida">Disminuir stock</option>
-                        <option value="ajuste">Ajustar al stock real</option>
-                    </select>
+                    <div>
+                        <Label htmlFor="cantidad">
+                            {tipoMovimiento === 'ajuste'
+                                ? 'Cantidad real contada'
+                                : 'Cantidad'}
+                        </Label>
+                        <Input
+                            id="cantidad"
+                            type="number"
+                            step="0.001"
+                            min={tipoMovimiento === 'ajuste' ? '0' : '0.001'}
+                            value={cantidad}
+                            onChange={(e) => setCantidad(e.target.value)}
+                        />
+                        <p className="mt-2 text-xs text-stone-500">
+                            {tipoMovimiento === 'entrada'
+                                ? 'Esta cantidad se sumará al stock actual.'
+                                : tipoMovimiento === 'salida'
+                                    ? 'Esta cantidad se descontará del stock actual.'
+                                    : 'Ingresá el total real que hay disponible, no la diferencia.'}
+                        </p>
+                    </div>
 
-                    <Label htmlFor="cantidad">
-                        {tipoMovimiento === 'ajuste'
-                            ? 'Cantidad real contada'
-                            : 'Cantidad'}
-                    </Label>
+                    <div>
+                        <Label htmlFor="motivo">Motivo del movimiento</Label>
+                        <Input
+                            id="motivo"
+                            type="text"
+                            placeholder="Ej: Compra a proveedor"
+                            value={motivo}
+                            onChange={(e) => setMotivo(e.target.value)}
+                        />
+                    </div>
 
-                    <Input
-                        id="cantidad"
-                        type="number"
-                        step="0.001"
-                        min={tipoMovimiento === 'ajuste' ? '0' : '0.001'}
-                        value={cantidad}
-                        onChange={(e) => setCantidad(e.target.value)}
-                    />
-
-                    <Label htmlFor="motivo">Motivo</Label>
-
-                    <Input
-                        id="motivo"
-                        type="text"
-                        placeholder="Ej: Compra a proveedor"
-                        value={motivo}
-                        onChange={(e) => setMotivo(e.target.value)}
-                    />
-
-                    <div className="flex justify-center mt-6">
+                    <div className="flex justify-end border-t border-stone-100 pt-5">
                         <Button type="submit">
                             {tipoMovimiento === 'entrada'
                                 ? 'Aumentar stock'
@@ -304,17 +370,17 @@ function StockDetalle({ menuAbierto }) {
             </Card>
 
             {mensajeAlerta && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-                    <div className={`w-full max-w-md rounded-xl bg-white p-6 shadow-2xl transition-transform duration-300 ${desplazamientoAlerta}`}>
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/50 p-4 backdrop-blur-sm">
+                    <div className={`w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl transition-transform duration-300 ${desplazamientoAlerta}`}>
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg font-bold text-red-600">
                                 !
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold text-[#1C1917]">
+                                <h2 className="text-lg font-bold text-stone-900">
                                     No se pudo realizar la operación
                                 </h2>
-                                <p className="mt-3 text-sm text-[#57534E]">
+                                <p className="mt-2 text-sm leading-6 text-stone-600">
                                     {mensajeAlerta}
                                 </p>
                             </div>
@@ -324,7 +390,7 @@ function StockDetalle({ menuAbierto }) {
                             <button
                                 type="button"
                                 onClick={() => setMensajeAlerta('')}
-                                className="rounded-md bg-[#13100F] px-4 py-2 text-sm font-semibold text-white hover:bg-[#26211F]"
+                                className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
                             >
                                 Entendido
                             </button>

@@ -1,85 +1,202 @@
-
-import React from "react"
-import Card from "../Components/UI/Card"
-import Input from "../Components/UI/Input"
-import Label from "../Components/UI/Label"
-import Button from "../Components/UI/Button"
-import {useForm} from "react-hook-form"
-import {Link, useNavigate} from "react-router-dom"
-import { useAuth } from "../Context/ContextoAutorizacion.jsx"
+import React from 'react'
+import Card from '../Components/UI/Card'
+import Input from '../Components/UI/Input'
+import Label from '../Components/UI/Label'
+import Button from '../Components/UI/Button'
+import { useForm } from 'react-hook-form'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../Context/ContextoAutorizacion.jsx'
 
 function RegisterPage() {
+    const { register: registerContexto, erroresBackEnd } = useAuth()
+    const navigate = useNavigate()
 
-  const {register: registerContexto, erroresBackEnd} = useAuth()
-  const navigate = useNavigate()
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    watch
-  } = useForm();
+    const {
+        register,
+        handleSubmit,
+        formState: { errors },
+        watch
+    } = useForm()
 
-  const onSubmit = handleSubmit(async (data) => {
-    const usuario = await registerContexto(data)
-    if (usuario) {
-      navigate("/productos")
-    }
-  });
+    const onSubmit = handleSubmit(async (data) => {
+        const usuario = await registerContexto(data)
 
-  return (
-    <div className='min-h-screen flex items-center justify-center px-4'>
-      <Card>
-        <h1 className='text-2xl font-bold text-[#1C1917] flex items-center justify-center'>Registro</h1>
-        {erroresBackEnd?.length > 0 && (
-          <div className="mt-4 mb-4 rounded-md bg-red-500/10 border border-red-500 p-3">
-            {erroresBackEnd.map((error, index) => (
-              <p key={index} className="text-red-500 text-sm text-center">
-                {error}
-              </p>
-            ))}
-          </div>
-        )}
+        if (usuario) {
+            navigate('/productos')
+        }
+    })
 
-        <form onSubmit={onSubmit}>
-          <Label htmlFor="nombre">Nombre</Label>
-          <Input {...register("nombre", {required: true})} type="text" placeholder="Ingresar nombre" />
-          {errors.nombre && <p className="text-red-500">El nombre es requerido</p>}
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-white px-4 py-10">
+            <div className="w-full max-w-lg">
+                <div className="mb-6 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-stone-900 text-lg font-bold tracking-wide text-white">
+                        GL
+                    </div>
 
-          <Label htmlFor="apellido">Apellido</Label>
-          <Input {...register("apellido", {required: true})} type="text" placeholder="Ingresar apellido" />
-          {errors.apellido && <p className="text-red-500">El apellido es requerido</p>}
+                    <h1 className="mt-4 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
+                        Crear una cuenta
+                    </h1>
 
-          <Label htmlFor="usuario">Usuario</Label>
-          <Input {...register("usuario", {required: true})} type="text" placeholder="Ingresar usuario" />
-          {errors.usuario && <p className="text-red-500">El usuario es requerido</p>}
+                    <p className="mt-2 text-sm leading-6 text-stone-500">
+                        Completá tus datos para acceder al sistema de gestión.
+                    </p>
+                </div>
 
-          <Label htmlFor="mail">Mail</Label>
-          <Input {...register("mail", {required: true})} type="email" placeholder="Correo electrónico" />
-          {errors.mail && <p className="text-red-500">El correo es requerido</p>}
+                <Card className="w-full border border-stone-300 bg-stone-300 shadow-md shadow-stone-900/[0.08]">
+                    {erroresBackEnd?.length > 0 && (
+                        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                            <p className="mb-2 text-sm font-semibold text-red-800">
+                                No se pudo crear la cuenta
+                            </p>
 
-          <Label htmlFor="contrasena">Contraseña</Label>
-          <Input {...register("contrasena", {required: true})} type="password" placeholder="Contraseña"/>
-          {errors.contrasena && <p className="text-red-500">La contraseña es requerida</p>}
+                            {erroresBackEnd.map((error, index) => (
+                                <p key={index} className="text-sm leading-6 text-red-700">
+                                    {error}
+                                </p>
+                            ))}
+                        </div>
+                    )}
 
-          <Label htmlFor="repetirContrasena">Repetir contraseña</Label>
-          <Input {...register("repetirContrasena", {required: true, validate: (valor) => valor === watch("contrasena") || "Las contraseñas no coinciden"})} type="password" placeholder="Repetir contraseña" />
-          {errors.repetirContrasena && <p className="text-red-500">{errors.repetirContrasena.message || "Debe repetir la contraseña"}</p>}
+                    <form onSubmit={onSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <Label htmlFor="nombre">Nombre</Label>
 
-          <div className="flex justify-center mt-4">
-            <Button type="submit">
-              Crear cuenta
-            </Button>
-          </div>
-        </form>
+                                <Input
+                                    id="nombre"
+                                    {...register('nombre', { required: true })}
+                                    type="text"
+                                    placeholder="Ingresá tu nombre"
+                                />
 
-        <div className='flex justify-between my-4'>
-          <p className="text-center text-[#57534E]">
-            ¿Tienes una cuenta? <Link className='font-bold text-[#13100F]' to="/iniciar-sesion">Ingresa aquí</Link>
-          </p>
+                                {errors.nombre && (
+                                    <p className="mt-1.5 text-xs font-medium text-red-600">
+                                        El nombre es requerido.
+                                    </p>
+                                )}
+                            </div>
+
+                            <div>
+                                <Label htmlFor="apellido">Apellido</Label>
+
+                                <Input
+                                    id="apellido"
+                                    {...register('apellido', { required: true })}
+                                    type="text"
+                                    placeholder="Ingresá tu apellido"
+                                />
+
+                                {errors.apellido && (
+                                    <p className="mt-1.5 text-xs font-medium text-red-600">
+                                        El apellido es requerido.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="usuario">Usuario</Label>
+
+                            <Input
+                                id="usuario"
+                                {...register('usuario', { required: true })}
+                                type="text"
+                                placeholder="Elegí un nombre de usuario"
+                            />
+
+                            {errors.usuario && (
+                                <p className="mt-1.5 text-xs font-medium text-red-600">
+                                    El usuario es requerido.
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="mail">Correo electrónico</Label>
+
+                            <Input
+                                id="mail"
+                                {...register('mail', { required: true })}
+                                type="email"
+                                placeholder="tu@correo.com"
+                            />
+
+                            {errors.mail && (
+                                <p className="mt-1.5 text-xs font-medium text-red-600">
+                                    El correo es requerido.
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="contrasena">Contraseña</Label>
+
+                            <Input
+                                id="contrasena"
+                                {...register('contrasena', { required: true })}
+                                type="password"
+                                placeholder="Ingresá una contraseña"
+                            />
+
+                            {errors.contrasena && (
+                                <p className="mt-1.5 text-xs font-medium text-red-600">
+                                    La contraseña es requerida.
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="repetirContrasena">
+                                Repetir contraseña
+                            </Label>
+
+                            <Input
+                                id="repetirContrasena"
+                                {...register('repetirContrasena', {
+                                    required: true,
+                                    validate: (valor) =>
+                                        valor === watch('contrasena') ||
+                                        'Las contraseñas no coinciden'
+                                })}
+                                type="password"
+                                placeholder="Volvé a ingresar la contraseña"
+                            />
+
+                            {errors.repetirContrasena && (
+                                <p className="mt-1.5 text-xs font-medium text-red-600">
+                                    {errors.repetirContrasena.message ||
+                                        'Debés repetir la contraseña.'}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="pt-2">
+                            <Button type="submit" className="w-full">
+                                Crear cuenta
+                            </Button>
+                        </div>
+                    </form>
+
+                    <div className="mt-6 border-t border-stone-200/70 pt-5 text-center">
+                        <p className="text-sm text-stone-500">
+                            ¿Ya tenés una cuenta?{' '}
+                            <Link
+                                className="font-semibold text-stone-900 underline-offset-4 transition hover:text-stone-600 hover:underline"
+                                to="/iniciar-sesion"
+                            >
+                                Iniciá sesión
+                            </Link>
+                        </p>
+                    </div>
+                </Card>
+
+                <p className="mt-6 text-center text-xs text-stone-400">
+                    Gestión Local · Sistema de gestión e inventario
+                </p>
+            </div>
         </div>
-      </Card>
-    </div>
-  )
+    )
 }
 
 export default RegisterPage

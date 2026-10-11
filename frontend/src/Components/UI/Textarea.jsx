@@ -1,16 +1,13 @@
-import { forwardRef } from 'react'
-import React from 'react'
+import React, { forwardRef } from 'react'
 
 export const Textarea = forwardRef((props, ref) => {
-
     return (
         <textarea
             ref={ref}
-            className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full text-[#1C1917] placeholder:text-[#78716C] focus:outline-none focus:border-[#13100F]"
+            className="block my-2 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-[#1C1917] placeholder:text-stone-400 transition-colors focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-100"
             {...props}
         />
-    );
-
-});
+    )
+})
 
 export default Textarea

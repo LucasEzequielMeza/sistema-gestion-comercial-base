@@ -1,9 +1,10 @@
 @import "tailwindcss";
-body {
-    background-color: #dadada;
-}
 
-h1 {
-    display: block;
-    font-size: 40px;
+body {
+    background-color: #ffffff;
+    color: #1c1917;
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
 }

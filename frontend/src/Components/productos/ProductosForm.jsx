@@ -16,7 +16,6 @@ function ProductosForm() {
         setValue,
         watch
     } = useForm({
-
         defaultValues: {
             nombre: '',
             descripcion: '',
@@ -33,7 +32,6 @@ function ProductosForm() {
     const [errorCodigo, setErrorCodigo] = useState('')
 
     const navigate = useNavigate()
-
     const params = useParams()
 
     const {
@@ -45,13 +43,11 @@ function ProductosForm() {
     } = useProducto()
 
     const precioCompra = watch('precio_compra')
-
     const porcentajeGanancia = watch('porcentaje_ganancia')
 
     const onSubmit = handleSubmit(async (data) => {
 
         limpiarProductoError()
-
         setErrorCodigo('')
 
         let respuesta
@@ -86,9 +82,7 @@ function ProductosForm() {
         }
 
         if (respuesta) {
-
             navigate('/productos')
-
         }
 
     })
@@ -103,35 +97,12 @@ function ProductosForm() {
                     return
                 }
 
-                setValue(
-                    'nombre',
-                    productoItem.nombre || ''
-                )
-
-                setValue(
-                    'descripcion',
-                    productoItem.descripcion || ''
-                )
-
-                setValue(
-                    'imagen',
-                    productoItem.imagen || ''
-                )
-
-                setValue(
-                    'codigo',
-                    productoItem.codigo || ''
-                )
-
-                setValue(
-                    'precio_compra',
-                    productoItem.precio_compra || ''
-                )
-
-                setValue(
-                    'precio_venta',
-                    productoItem.precio_venta || ''
-                )
+                setValue('nombre', productoItem.nombre || '')
+                setValue('descripcion', productoItem.descripcion || '')
+                setValue('imagen', productoItem.imagen || '')
+                setValue('codigo', productoItem.codigo || '')
+                setValue('precio_compra', productoItem.precio_compra || '')
+                setValue('precio_venta', productoItem.precio_venta || '')
 
                 const precioCompra =
                     Number(productoItem.precio_compra)
@@ -168,17 +139,12 @@ function ProductosForm() {
             porcentajeGanancia === ''
         ) {
 
-            setValue(
-                'precio_venta',
-                ''
-            )
-
+            setValue('precio_venta', '')
             return
 
         }
 
         const precio = Number(precioCompra)
-
         const porcentaje = Number(porcentajeGanancia)
 
         if (
@@ -213,9 +179,7 @@ function ProductosForm() {
             )
 
             const temporizador = setTimeout(() => {
-
                 setErrorCodigo('')
-
             }, 10000)
 
             return () => clearTimeout(temporizador)
@@ -225,151 +189,299 @@ function ProductosForm() {
     }, [productoError])
 
     return (
+        <div className="min-h-screen bg-[#F5F5F4] p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto max-w-4xl space-y-6">
 
-        <div>
-            <Card>
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 my-4">
-                    <h2 className="text-3xl font-bold text-[#1C1917]">
-                        {params.id
-                            ? 'Editar producto'
-                            : 'Crear producto'}
-                    </h2>
-                    <Button type="button" onClick={() => navigate('/productos')}>Volver</Button>
+                {/* Encabezado */}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-sm font-medium text-stone-500">
+                            Gestión de inventario
+                        </p>
+
+                        <h1 className="mt-1 text-2xl font-bold text-stone-900 sm:text-3xl">
+                            {params.id
+                                ? 'Editar producto'
+                                : 'Crear producto'}
+                        </h1>
+
+                        <p className="mt-2 text-sm text-stone-600">
+                            {params.id
+                                ? 'Actualizá la información del producto.'
+                                : 'Completá los datos para incorporar un producto al inventario.'}
+                        </p>
+                    </div>
+
+                    <Button
+                        type="button"
+                        onClick={() => navigate('/productos')}
+                    >
+                        Volver a productos
+                    </Button>
                 </div>
 
-                <form onSubmit={onSubmit}>
-                    <Label htmlFor="nombre">Nombre</Label>
-                    <Input
-                        type="text"
-                        {...register('nombre', {
-                            required: true
-                        })}
-                    />
-                    {errors.nombre && (
-                        <p className="text-red-500"> El nombre del producto es requerido</p>
-                    )}
+                <Card className="w-full rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
+                    <form onSubmit={onSubmit} className="space-y-6">
 
-                    <Label htmlFor="descripcion">Descripción</Label>
+                        {/* Información principal */}
+                        <div>
+                            <h2 className="text-lg font-bold text-stone-900">
+                                Información del producto
+                            </h2>
 
-                    <textarea
-                        className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full text-[#1C1917] placeholder:text-[#78716C] focus:outline-none focus:border-[#13100F]"
-                        {...register('descripcion')}
-                    />
+                            <p className="mt-1 text-sm text-stone-500">
+                                Datos generales para identificar el producto.
+                            </p>
+                        </div>
 
-                    <Label htmlFor="imagen">Imagen</Label>
+                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
 
-                    <Input
-                        type="text"
-                        placeholder="URL de la imagen"
-                        {...register('imagen')}
-                    />
+                            <div className="sm:col-span-2">
+                                <Label htmlFor="nombre">Nombre</Label>
 
-                    <Label htmlFor="codigo">Código</Label>
-                    {errorCodigo && (
-                        <p className="text-red-500">
-                            {errorCodigo}
-                        </p>
-                    )}
+                                <div className="mt-2">
+                                    <Input
+                                        type="text"
+                                        {...register('nombre', {
+                                            required: true
+                                        })}
+                                    />
+                                </div>
 
-                    <Input type="text" {...register('codigo')}/>
+                                {errors.nombre && (
+                                    <p className="mt-2 text-sm text-red-600">
+                                        El nombre del producto es requerido
+                                    </p>
+                                )}
+                            </div>
 
-                    <Label htmlFor="precio_compra">Precio de compra</Label>
-                    <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        {...register('precio_compra', {
-                            required: true,
-                            min: {
-                                value: 0,
-                                message: 'El precio no puede ser negativo'
-                            }
-                        })}
-                    />
-                    {errors.precio_compra && (
-                        <p className="text-red-500">El precio de compra es requerido</p>
-                    )}
+                            <div className="sm:col-span-2">
+                                <Label htmlFor="descripcion">
+                                    Descripción
+                                </Label>
 
-                    <Label htmlFor="porcentaje_ganancia">Ganancia sobre el costo</Label>
-                    <select
-                        className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full text-[#1C1917] focus:outline-none focus:border-[#13100F]"
-                        {...register('porcentaje_ganancia')}
-                    >
-                        <option value="15">15%</option>
-                        <option value="20">20%</option>
-                        <option value="25">25%</option>
-                        <option value="30">30%</option>
-                        <option value="35">35%</option>
-                        <option value="40">40%</option>
-                    </select>
+                                <textarea
+                                    id="descripcion"
+                                    rows={4}
+                                    placeholder="Ingresá una descripción del producto..."
+                                    className="mt-2 block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-500 focus:ring-2 focus:ring-stone-200"
+                                    {...register('descripcion')}
+                                />
+                            </div>
 
-                    <Label htmlFor="precio_venta">Precio de venta</Label>
-                    <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        readOnly
-                        {...register('precio_venta', {
-                            required: true,
-                            min: {
-                                value: 0,
-                                message: 'El precio no puede ser negativo'
-                            }
-                        })}
-                    />
-                    {errors.precio_venta && (
-                        <p className="text-red-500">El precio de venta es requerido</p>
-                    )}
+                            <div className="sm:col-span-2">
+                                <Label htmlFor="imagen">Imagen</Label>
 
-                    {!params.id && (
+                                <div className="mt-2">
+                                    <Input
+                                        type="text"
+                                        placeholder="URL de la imagen"
+                                        {...register('imagen')}
+                                    />
+                                </div>
 
-                        <>
-                            <Label htmlFor="stock">Stock inicial</Label>
-                            <Input
-                                type="number"
-                                step="0.001"
-                                min="0"
-                                {...register('stock', {
-                                    required: true,
-                                    min: {
-                                        value: 0,
-                                        message: 'El stock no puede ser negativo'
-                                    }
-                                })}
-                            />
-                            {errors.stock && (
-                                <p className="text-red-500">El stock inicial es requerido</p>
-                            )}
+                                <p className="mt-2 text-xs text-stone-500">
+                                    Pegá la dirección web de la imagen del producto.
+                                </p>
+                            </div>
 
-                            <Label htmlFor="stock_minimo">Stock mínimo</Label>
-                            <Input
-                                type="number"
-                                step="0.001"
-                                min="0"
-                                {...register('stock_minimo', {
-                                    required: true,
-                                    min: {
-                                        value: 0,
-                                        message: 'El stock mínimo es requerido'
-                                    }
-                                })}
-                            />
-                            {errors.stock_minimo && (
-                                <p className="text-red-500">El stock mínimo es requerido</p>
-                            )}
-                        </>
+                            <div className="sm:col-span-2">
+                                <Label htmlFor="codigo">Código</Label>
 
-                    )}
+                                {errorCodigo && (
+                                    <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                        {errorCodigo}
+                                    </p>
+                                )}
 
-                    <div className="flex justify-center mt-4">
+                                <div className="mt-2">
+                                    <Input
+                                        type="text"
+                                        {...register('codigo')}
+                                    />
+                                </div>
+                            </div>
+                        </div>
 
-                        <Button type="submit"> {params.id
-                                ? 'Actualizar'
-                                : 'Crear'}
-                        </Button>
-                    </div>
-                </form>
-            </Card>
+                        {/* Precios */}
+                        <div className="border-t border-stone-200 pt-6">
+                            <h2 className="text-lg font-bold text-stone-900">
+                                Precios
+                            </h2>
+
+                            <p className="mt-1 text-sm text-stone-500">
+                                Definí el costo y el porcentaje de ganancia para calcular el precio de venta.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+                            <div>
+                                <Label htmlFor="precio_compra">
+                                    Precio de compra
+                                </Label>
+
+                                <div className="mt-2">
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        {...register('precio_compra', {
+                                            required: true,
+                                            min: {
+                                                value: 0,
+                                                message: 'El precio no puede ser negativo'
+                                            }
+                                        })}
+                                    />
+                                </div>
+
+                                {errors.precio_compra && (
+                                    <p className="mt-2 text-sm text-red-600">
+                                        El precio de compra es requerido
+                                    </p>
+                                )}
+                            </div>
+
+                            <div>
+                                <Label htmlFor="porcentaje_ganancia">
+                                    Ganancia sobre el costo
+                                </Label>
+
+                                <select
+                                    className="mt-2 block w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200"
+                                    {...register('porcentaje_ganancia')}
+                                >
+                                    <option value="15">15%</option>
+                                    <option value="20">20%</option>
+                                    <option value="25">25%</option>
+                                    <option value="30">30%</option>
+                                    <option value="35">35%</option>
+                                    <option value="40">40%</option>
+                                </select>
+                            </div>
+
+                            <div className="sm:col-span-2">
+                                <Label htmlFor="precio_venta">
+                                    Precio de venta calculado
+                                </Label>
+
+                                <div className="mt-2">
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        readOnly
+                                        {...register('precio_venta', {
+                                            required: true,
+                                            min: {
+                                                value: 0,
+                                                message: 'El precio no puede ser negativo'
+                                            }
+                                        })}
+                                    />
+                                </div>
+
+                                <p className="mt-2 text-xs text-stone-500">
+                                    Este importe se calcula automáticamente según el costo y la ganancia seleccionada.
+                                </p>
+
+                                {errors.precio_venta && (
+                                    <p className="mt-2 text-sm text-red-600">
+                                        El precio de venta es requerido
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Stock inicial */}
+                        {!params.id && (
+                            <>
+                                <div className="border-t border-stone-200 pt-6">
+                                    <h2 className="text-lg font-bold text-stone-900">
+                                        Stock inicial
+                                    </h2>
+
+                                    <p className="mt-1 text-sm text-stone-500">
+                                        Indicá la cantidad inicial y el nivel mínimo de stock.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+                                    <div>
+                                        <Label htmlFor="stock">
+                                            Stock inicial
+                                        </Label>
+
+                                        <div className="mt-2">
+                                            <Input
+                                                type="number"
+                                                step="0.001"
+                                                min="0"
+                                                {...register('stock', {
+                                                    required: true,
+                                                    min: {
+                                                        value: 0,
+                                                        message: 'El stock no puede ser negativo'
+                                                    }
+                                                })}
+                                            />
+                                        </div>
+
+                                        {errors.stock && (
+                                            <p className="mt-2 text-sm text-red-600">
+                                                El stock inicial es requerido
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="stock_minimo">
+                                            Stock mínimo
+                                        </Label>
+
+                                        <div className="mt-2">
+                                            <Input
+                                                type="number"
+                                                step="0.001"
+                                                min="0"
+                                                {...register('stock_minimo', {
+                                                    required: true,
+                                                    min: {
+                                                        value: 0,
+                                                        message: 'El stock no puede ser negativo'
+                                                    }
+                                                })}
+                                            />
+                                        </div>
+
+                                        {errors.stock_minimo && (
+                                            <p className="mt-2 text-sm text-red-600">
+                                                El stock mínimo es requerido
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Acciones */}
+                        <div className="flex flex-col-reverse gap-3 border-t border-stone-200 pt-6 sm:flex-row sm:justify-end">
+                            <Button
+                                type="button"
+                                onClick={() => navigate('/productos')}
+                            >
+                                Cancelar
+                            </Button>
+
+                            <Button type="submit">
+                                {params.id ? 'Actualizar producto' : 'Crear producto'}
+                            </Button>
+                        </div>
+                    </form>
+                </Card>
+            </div>
         </div>
     )
 }

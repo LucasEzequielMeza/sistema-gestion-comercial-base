@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FaExclamationTriangle, FaTimes } from 'react-icons/fa'
+import { FaExclamationTriangle, FaTimes, FaPlus, FaTrash, FaShoppingCart } from 'react-icons/fa'
 import Card from '../UI/Card'
 import Input from '../UI/Input'
 import Label from '../UI/Label'
@@ -143,176 +143,302 @@ function CompraForm() {
         }
     }
 
+    const formatoMoneda = (importe) => {
+        return Number(importe || 0).toLocaleString('es-AR', {
+            style: 'currency',
+            currency: 'ARS'
+        })
+    }
+
+    const claseSelect = "my-2 block w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 transition focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-100"
+
     return (
-        <Card>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 my-4">
-                <h2 className="text-3xl font-bold text-[#1C1917]">Registrar compra</h2>
-                <Button type="button" onClick={() => navigate('/compras')}>Volver</Button>
+        <div className="mx-auto w-full max-w-5xl space-y-6 pb-8">
+            <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p className="text-sm font-medium text-stone-500">
+                        Inventario / Compras
+                    </p>
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
+                        Registrar compra
+                    </h1>
+                    <p className="mt-1 text-sm leading-6 text-stone-500">
+                        Cargá el proveedor, el comprobante y los productos recibidos.
+                    </p>
+                </div>
+
+                <Button
+                    type="button"
+                    onClick={() => navigate('/compras')}
+                    className="w-full sm:w-auto"
+                >
+                    Volver a compras
+                </Button>
             </div>
 
             {error && (
-                <div className="mb-5 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                    <p>{error}</p>
+                <div className="flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    <div className="flex items-start gap-3">
+                        <FaExclamationTriangle className="mt-0.5 shrink-0" />
+                        <p className="leading-6">{error}</p>
+                    </div>
+
                     <button
                         type="button"
                         onClick={() => setError('')}
                         aria-label="Cerrar error"
-                        className="rounded-md p-1 transition hover:bg-red-100"
+                        className="rounded-lg p-1 transition hover:bg-red-100"
                     >
                         <FaTimes />
                     </button>
                 </div>
             )}
 
-            <form onSubmit={registrarCompra}>
-                <Label htmlFor="proveedor">Proveedor</Label>
-                <select
-                    id="proveedor"
-                    value={proveedorId}
-                    onChange={e => setProveedorId(e.target.value)}
-                    className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full"
-                    required
-                >
-                    <option value="">Seleccionar proveedor</option>
-                    {proveedores.map(proveedor => (
-                        <option key={proveedor.id} value={proveedor.id}>
-                            {proveedor.nombre}
-                        </option>
-                    ))}
-                </select>
-
-                <Label htmlFor="tipo_comprobante">Tipo de comprobante</Label>
-                <select
-                    id="tipo_comprobante"
-                    value={tipoComprobante}
-                    onChange={e => setTipoComprobante(e.target.value)}
-                    className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full"
-                >
-                    <option value="Factura">Factura</option>
-                    <option value="Remito">Remito</option>
-                    <option value="Ticket">Ticket</option>
-                    <option value="Otro">Otro</option>
-                </select>
-
-                <Label htmlFor="numero_comprobante">Número de comprobante</Label>
-                <Input
-                    type="text"
-                    value={numeroComprobante}
-                    onChange={e => setNumeroComprobante(e.target.value)}
-                />
-
-                <Label htmlFor="observaciones">Observaciones</Label>
-                <textarea
-                    id="observaciones"
-                    value={observaciones}
-                    onChange={e => setObservaciones(e.target.value)}
-                    className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full"
-                />
-
-                <h3 className="text-xl font-bold mt-6 mb-3">Productos de la compra</h3>
-
-                {detalles.map((detalle, indice) => (
-                    <div key={indice} className="border border-[#D6D3D1] rounded-lg p-4 mb-4">
-                        <Label>Producto</Label>
-                        <select
-                            value={detalle.producto_id}
-                            onChange={e => {
-                                const productoId = e.target.value
-
-                                if (
-                                    productoId &&
-                                    detalles.some((item, i) =>
-                                        i !== indice && item.producto_id === productoId
-                                    )
-                                ) {
-                                    setFilaDuplicada(indice)
-                                    return
-                                }
-
-                                setError('')
-
-                                const producto = productos.find(item => item.id === productoId)
-
-                                actualizarDetalle(indice, 'producto_id', productoId)
-                                actualizarDetalle(indice, 'costo_unitario', producto ? producto.precio_compra : 0)
-                            }}
-                            className="bg-white border border-[#D6D3D1] rounded-md px-3 py-2 block my-2 w-full"
-                            required
-                        >
-                            <option value="">Seleccionar producto</option>
-                            {productos.map(producto => (
-                                <option key={producto.id} value={producto.id}>
-                                    {producto.nombre} ({producto.codigo})
-                                </option>
-                            ))}
-                        </select>
-
-                        <Label>Cantidad</Label>
-                        <Input
-                            type="number"
-                            min="0.001"
-                            step="0.001"
-                            value={detalle.cantidad}
-                            onChange={e => actualizarDetalle(indice, 'cantidad', e.target.value)}
-                            required
-                        />
-
-                        <Label>Costo unitario</Label>
-                        <Input
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            value={detalle.costo_unitario}
-                            onChange={e => actualizarDetalle(indice, 'costo_unitario', e.target.value)}
-                            required
-                        />
-
-                        <p className="text-right font-medium mt-2">
-                            Subtotal: {(Number(detalle.cantidad) * Number(detalle.costo_unitario)).toLocaleString('es-AR', {
-                                style: 'currency',
-                                currency: 'ARS'
-                            })}
-                        </p>
-
-                        {detalles.length > 1 && (
-                            <div className="mt-3">
-                                <Button type="button" onClick={() => quitarProducto(indice)}>
-                                    Quitar producto
-                                </Button>
-                            </div>
-                        )}
+            <form onSubmit={registrarCompra} className="space-y-6">
+                <Card className="border border-stone-200 bg-white shadow-sm">
+                    <div className="mb-5 flex items-center gap-3 border-b border-stone-100 pb-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-700">
+                            <FaShoppingCart />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-stone-900">
+                                Información de la compra
+                            </h2>
+                            <p className="mt-0.5 text-sm text-stone-500">
+                                Datos del proveedor y del comprobante.
+                            </p>
+                        </div>
                     </div>
-                ))}
 
-                <Button type="button" onClick={agregarProducto}>Agregar otro producto</Button>
+                    <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+                        <div className="md:col-span-2">
+                            <Label htmlFor="proveedor">Proveedor</Label>
+                            <select
+                                id="proveedor"
+                                value={proveedorId}
+                                onChange={e => setProveedorId(e.target.value)}
+                                className={claseSelect}
+                                required
+                            >
+                                <option value="">Seleccionar proveedor</option>
+                                {proveedores.map(proveedor => (
+                                    <option key={proveedor.id} value={proveedor.id}>
+                                        {proveedor.nombre}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
 
-                <div className="text-right text-xl font-bold my-6">
-                    Total: {total.toLocaleString('es-AR', {
-                        style: 'currency',
-                        currency: 'ARS'
-                    })}
-                </div>
+                        <div>
+                            <Label htmlFor="tipo_comprobante">Tipo de comprobante</Label>
+                            <select
+                                id="tipo_comprobante"
+                                value={tipoComprobante}
+                                onChange={e => setTipoComprobante(e.target.value)}
+                                className={claseSelect}
+                            >
+                                <option value="Factura">Factura</option>
+                                <option value="Remito">Remito</option>
+                                <option value="Ticket">Ticket</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
 
-                <div className="flex justify-center">
-                    <Button type="submit" disabled={guardando}>
+                        <div>
+                            <Label htmlFor="numero_comprobante">Número de comprobante</Label>
+                            <Input
+                                id="numero_comprobante"
+                                type="text"
+                                value={numeroComprobante}
+                                onChange={e => setNumeroComprobante(e.target.value)}
+                                placeholder="Ej. 0001-00001234"
+                            />
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <Label htmlFor="observaciones">Observaciones</Label>
+                            <textarea
+                                id="observaciones"
+                                value={observaciones}
+                                onChange={e => setObservaciones(e.target.value)}
+                                placeholder="Información adicional de la compra (opcional)"
+                                rows={3}
+                                className="my-2 block w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 transition focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-100"
+                            />
+                        </div>
+                    </div>
+                </Card>
+
+                <Card className="border border-stone-200 bg-white shadow-sm">
+                    <div className="mb-5 flex flex-col gap-3 border-b border-stone-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 className="text-lg font-bold text-stone-900">
+                                Productos de la compra
+                            </h2>
+                            <p className="mt-1 text-sm text-stone-500">
+                                Agregá cada producto una sola vez e indicá cantidad y costo.
+                            </p>
+                        </div>
+
+                        <span className="w-fit rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-600">
+                            {detalles.length} {detalles.length === 1 ? 'producto' : 'productos'}
+                        </span>
+                    </div>
+
+                    <div className="space-y-4">
+                        {detalles.map((detalle, indice) => (
+                            <div
+                                key={indice}
+                                className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4 sm:p-5"
+                            >
+                                <div className="mb-4 flex items-center justify-between gap-3">
+                                    <h3 className="text-sm font-bold text-stone-800">
+                                        Producto {indice + 1}
+                                    </h3>
+
+                                    {detalles.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => quitarProducto(indice)}
+                                            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                                        >
+                                            <FaTrash size={12} />
+                                            Quitar
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-x-5 gap-y-3 md:grid-cols-3">
+                                    <div className="md:col-span-3">
+                                        <Label>Producto</Label>
+                                        <select
+                                            value={detalle.producto_id}
+                                            onChange={e => {
+                                                const productoId = e.target.value
+
+                                                if (
+                                                    productoId &&
+                                                    detalles.some((item, i) =>
+                                                        i !== indice && item.producto_id === productoId
+                                                    )
+                                                ) {
+                                                    setFilaDuplicada(indice)
+                                                    return
+                                                }
+
+                                                setError('')
+
+                                                const producto = productos.find(item => item.id === productoId)
+
+                                                actualizarDetalle(indice, 'producto_id', productoId)
+                                                actualizarDetalle(indice, 'costo_unitario', producto ? producto.precio_compra : 0)
+                                            }}
+                                            className={claseSelect}
+                                            required
+                                        >
+                                            <option value="">Seleccionar producto</option>
+                                            {productos.map(producto => (
+                                                <option key={producto.id} value={producto.id}>
+                                                    {producto.nombre} ({producto.codigo})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <Label>Cantidad</Label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={detalle.cantidad}
+                                            onChange={(e) =>
+                                                actualizarDetalle(indice, "cantidad", e.target.value)
+                                            }
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <Label>Costo unitario</Label>
+                                        <Input
+                                            type="number"
+                                            value={detalle.costo_unitario}
+                                            onChange={e => actualizarDetalle(indice, 'costo_unitario', e.target.value)}
+                                            readOnly
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-col justify-center rounded-xl border border-stone-200 bg-white px-4 py-3 md:mt-2">
+                                        <span className="text-xs font-medium text-stone-500">
+                                            Subtotal
+                                        </span>
+                                        <span className="mt-1 text-lg font-bold text-stone-900">
+                                            {formatoMoneda(Number(detalle.cantidad) * Number(detalle.costo_unitario))}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={agregarProducto}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-500 hover:bg-stone-50 sm:w-auto"
+                    >
+                        <FaPlus size={12} />
+                        Agregar otro producto
+                    </button>
+
+                    <div className="mt-6 flex flex-col gap-2 rounded-2xl border border-stone-200 bg-stone-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-stone-500">
+                                Total de la compra
+                            </p>
+                            <p className="mt-1 text-xs text-stone-500">
+                                Suma de todos los subtotales.
+                            </p>
+                        </div>
+
+                        <p className="text-2xl font-bold tracking-tight text-stone-900">
+                            {formatoMoneda(total)}
+                        </p>
+                    </div>
+                </Card>
+
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                    <Button
+                        type="button"
+                        onClick={() => navigate('/compras')}
+                        className="w-full sm:w-auto"
+                    >
+                        Cancelar
+                    </Button>
+
+                    <Button
+                        type="submit"
+                        disabled={guardando}
+                        className="w-full sm:w-auto"
+                    >
                         {guardando ? 'Registrando...' : 'Registrar compra'}
                     </Button>
                 </div>
             </form>
 
             {filaDuplicada !== null && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/50 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl">
                         <div className="p-6">
-                            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
                                 <FaExclamationTriangle size={23} />
                             </div>
 
-                            <h2 className="text-xl font-bold text-[#1C1917]">
+                            <h2 className="text-xl font-bold text-stone-900">
                                 Producto repetido
                             </h2>
 
-                            <p className="mt-3 text-sm leading-6 text-[#78716C]">
+                            <p className="mt-3 text-sm leading-6 text-stone-600">
                                 Este producto ya está agregado a la compra. Cada producto debe aparecer una sola vez. Si continuás, se quitará el renglón en el que intentaste seleccionarlo.
                             </p>
 
@@ -320,7 +446,7 @@ function CompraForm() {
                                 <button
                                     type="button"
                                     onClick={() => setFilaDuplicada(null)}
-                                    className="rounded-xl border border-[#D6D3D1] px-4 py-3 text-sm font-semibold text-[#44403C] transition hover:bg-[#F5F5F4]"
+                                    className="rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100"
                                 >
                                     Volver
                                 </button>
@@ -337,7 +463,7 @@ function CompraForm() {
                     </div>
                 </div>
             )}
-        </Card>
+        </div>
     )
 }
 
