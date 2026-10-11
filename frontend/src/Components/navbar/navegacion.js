@@ -16,5 +16,10 @@ export const privateRoutes = [
     name: 'Stock',
     path: '/stock',
     icon: MdInventory
+    },
+    {
+    name: 'Compras',
+    path: '/compras',
+    icon: FaBoxOpen
     }
 ]

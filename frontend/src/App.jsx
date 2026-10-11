@@ -12,6 +12,8 @@ import Container from './Components/UI/Container'
 import RutaProtegida from './Components/autorizacion/RutaProtegida'
 import ProductosInactivosPage from './Pages/ProductosInactivosPage'
 import MovimientosStockPage from './Pages/MovimientosStockPage'
+import ComprasPage from './Pages/ComprasPage'
+import ComprasForm from './Components/compras/ComprasForm'
 
 function App() {
 
@@ -64,6 +66,10 @@ function App() {
                             <Route path="/stock" element={<StockPage />}/>
                             <Route path="/stock/detalle/:id" element={<StockDetalle menuAbierto={menuAbierto} />}/>
                             <Route path="/stock/movimientos" element={<MovimientosStockPage />}/>
+
+                            {/* Compras */}
+                            <Route path="/compras" element={<ComprasPage />}/>
+                            <Route path="/compras/crear" element={<ComprasForm />}/>
 
                             {/* Ruta inexistente */}
                             <Route path="*" element={<Navigate to="/productos" replace />}/>

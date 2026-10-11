@@ -8,6 +8,7 @@ import stockRoutes from './modulos/stock/stock.routes.js';
 import movimientosStockRoutes from './modulos/movimientos_stock/movimientos_stock.routes.js';
 import categoriasRoutes from './modulos/categorias/categorias.routes.js';
 import proveedoresRoutes from './modulos/proveedores/proveedores.routes.js';
+import comprasRoutes from './modulos/compras/compras.routes.js';
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use('/api/stock', stockRoutes);
 app.use('/api/movimientos-stock', movimientosStockRoutes);
 app.use('/api/categorias', categoriasRoutes);
 app.use('/api/proveedores', proveedoresRoutes);
+app.use('/api/compras', comprasRoutes);
 
 // Respondo cuando la ruta solicitada no existe
 app.use((req, res) => {
