@@ -14,6 +14,9 @@ import ProductosInactivosPage from './Pages/ProductosInactivosPage'
 import MovimientosStockPage from './Pages/MovimientosStockPage'
 import ComprasPage from './Pages/ComprasPage'
 import ComprasForm from './Components/compras/ComprasForm'
+import VentasPage from './Pages/VentasPage'
+import VentasForm from './Components/ventas/VentaForm'
+import VentasDetalle from './Components/ventas/VentaDetalle'
 
 function App() {
 
@@ -70,6 +73,11 @@ function App() {
                             {/* Compras */}
                             <Route path="/compras" element={<ComprasPage />}/>
                             <Route path="/compras/crear" element={<ComprasForm />}/>
+
+                            {/* Ventas */}
+                            <Route path="/ventas" element={<VentasPage />}/>
+                            <Route path="/ventas/nueva" element={<VentasForm />}/>
+                            <Route path="/ventas/:id" element={<VentasDetalle />}/>
 
                             {/* Ruta inexistente */}
                             <Route path="*" element={<Navigate to="/productos" replace />}/>

@@ -1,4 +1,4 @@
-import { FaBoxOpen, FaBox } from 'react-icons/fa'
+import { FaBoxOpen, FaBox, FaCashRegister } from 'react-icons/fa'
 import { MdInventory } from 'react-icons/md'
 
 export const privateRoutes = [
@@ -21,5 +21,10 @@ export const privateRoutes = [
     name: 'Compras',
     path: '/compras',
     icon: FaBoxOpen
+    },
+    {
+        name: 'Ventas',
+        path: '/ventas',
+        icon: FaCashRegister
     }
 ]

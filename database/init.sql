@@ -168,3 +168,70 @@ WHERE numero_comprobante IS NOT NULL
 ALTER TABLE detalle_compras
 ADD CONSTRAINT uq_detalle_compras_producto
 UNIQUE (compra_id, producto_id);
+
+********************
+TABLA VENTAS Y PAGOS
+********************
+
+-- Guardo la información general de cada venta.
+CREATE TABLE IF NOT EXISTS ventas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    numero_venta BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+    usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    total NUMERIC(12, 2) NOT NULL CHECK (total > 0),
+    estado VARCHAR(20) NOT NULL DEFAULT 'completada'
+        CHECK (estado IN ('completada', 'anulada')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Guardo los productos y sus precios tal como estaban al venderlos.
+CREATE TABLE IF NOT EXISTS detalle_ventas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    venta_id UUID NOT NULL REFERENCES ventas(id) ON DELETE RESTRICT,
+    producto_id UUID NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
+    producto_nombre VARCHAR(255) NOT NULL,
+    producto_codigo VARCHAR(100),
+    cantidad NUMERIC(10, 3) NOT NULL CHECK (cantidad > 0),
+    precio_unitario NUMERIC(12, 2) NOT NULL CHECK (precio_unitario >= 0),
+    subtotal NUMERIC(12, 2) NOT NULL CHECK (subtotal >= 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+******************
+TABLA PAGOS_VENTA
+******************
+
+-- Permito registrar uno o varios medios de pago por venta.
+CREATE TABLE IF NOT EXISTS pagos_venta (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    venta_id UUID NOT NULL REFERENCES ventas(id) ON DELETE RESTRICT,
+    metodo_pago VARCHAR(30) NOT NULL
+        CHECK (metodo_pago IN (
+            'efectivo',
+            'mercado_pago',
+            'transferencia',
+            'tarjeta_debito',
+            'tarjeta_credito',
+            'otro'
+        )),
+    monto NUMERIC(12, 2) NOT NULL CHECK (monto > 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Agilizo las consultas por fecha y estado.
+CREATE INDEX IF NOT EXISTS idx_ventas_created_at
+    ON ventas(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ventas_estado
+    ON ventas(estado);
+
+-- Agilizo las búsquedas de artículos vendidos.
+CREATE INDEX IF NOT EXISTS idx_detalle_ventas_producto
+    ON detalle_ventas(producto_id);
+
+-- Agilizo los reportes por medio de pago.
+CREATE INDEX IF NOT EXISTS idx_pagos_venta_metodo
+    ON pagos_venta(metodo_pago);
+
+CREATE INDEX IF NOT EXISTS idx_pagos_venta_venta
+    ON pagos_venta(venta_id);
