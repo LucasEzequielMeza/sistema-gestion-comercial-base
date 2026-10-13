@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {Routes, Route, Navigate, useLocation} from 'react-router-dom'
 import RegisterPage from './Pages/RegisterPage'
 import LoginPage from './Pages/LoginPage'
+import DashboardPage from './Pages/DashboardPage'
 import ProductosPage from './Pages/ProductosPage'
 import StockPage from './Pages/StockPage'
 import ProductosForm from './Components/productos/ProductosForm'
@@ -17,6 +18,8 @@ import ComprasForm from './Components/compras/ComprasForm'
 import VentasPage from './Pages/VentasPage'
 import VentasForm from './Components/ventas/VentaForm'
 import VentasDetalle from './Components/ventas/VentaDetalle'
+import ProveedoresPage from './Pages/ProveedoresPage'
+import ProveedoresForm from './Components/proveedores/ProveedoresForm'
 
 function App() {
 
@@ -45,18 +48,19 @@ function App() {
                         }`
                 }
             >
-
                 <Container>
                     <Routes>
-
                         {/* Autenticación */}
-                        <Route path="/" element={<Navigate to="/productos" replace />}/>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />}/>
                         <Route path="/iniciar-sesion" element={<LoginPage />}/>
                         <Route path="/registro" element={<RegisterPage />}/>
 
                         {/* Compatibilidad con la ruta anterior */}
                         <Route path="/register" element={<Navigate to="/registro" replace />}/>
+
                         <Route element={<RutaProtegida />}>
+                            {/* Dashboard */}
+                            <Route path="/panel-de-control" element={<DashboardPage />}/>
 
                             {/* Productos */}
                             <Route path="/productos" element={<ProductosPage />}/>
@@ -79,8 +83,12 @@ function App() {
                             <Route path="/ventas/nueva" element={<VentasForm />}/>
                             <Route path="/ventas/:id" element={<VentasDetalle />}/>
 
+                            {/*Proveedores */}
+                            <Route path='/proveedores' element={<ProveedoresPage />}/>
+                            <Route path='/proveedores/nuevo' element={<ProveedoresForm/>}/>
+
                             {/* Ruta inexistente */}
-                            <Route path="*" element={<Navigate to="/productos" replace />}/>
+                            <Route path="*" element={<Navigate to="/dashboard" replace />}/>
                         </Route>
                     </Routes>
                 </Container>
