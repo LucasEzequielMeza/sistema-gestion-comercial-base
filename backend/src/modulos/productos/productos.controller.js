@@ -12,6 +12,29 @@ export const crearProducto = async (req, res, next) => {
         client = await pool.connect();
         await client.query('BEGIN');
 
+        if (!categoria_id) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                message: 'Debés seleccionar una categoría'
+            });
+        }
+
+        const categoria = await client.query(
+            `SELECT id
+            FROM categorias
+            WHERE id = $1 AND activo = true`,
+            [categoria_id]
+        );
+
+        if (categoria.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                message: 'La categoría seleccionada no existe o está inactiva'
+            });
+        }
+
         const result = await client.query(
             `INSERT INTO productos (
                 nombre, descripcion, imagen, codigo, categoria_id,
@@ -21,7 +44,7 @@ export const crearProducto = async (req, res, next) => {
             RETURNING *`,
             [
                 nombre, descripcion ?? null, imagen ?? null, codigo,
-                categoria_id ?? null, precio_compra, precio_venta,
+                categoria_id, precio_compra, precio_venta,
                 stock ?? 0, stock_minimo ?? 0
             ]
         );
@@ -146,27 +169,48 @@ export const obtenerProductoPorId = async (req, res) => {
 export const actualizarProducto = async (req, res) => {
     const { id } = req.params;
     const {
-    nombre, descripcion, imagen, codigo,
-    precio_compra, precio_venta
+        nombre, descripcion, imagen, codigo, categoria_id,
+        precio_compra, precio_venta
     } = req.body;
 
     try {
+        if (!categoria_id) {
+            return res.status(400).json({
+                message: 'Debés seleccionar una categoría'
+            });
+        }
+
+        const categoria = await pool.query(
+            `SELECT id
+            FROM categorias
+            WHERE id = $1 AND activo = true`,
+            [categoria_id]
+        );
+
+        if (categoria.rowCount === 0) {
+            return res.status(400).json({
+                message: 'La categoría seleccionada no existe o está inactiva'
+            });
+        }
+
         const result = await pool.query(
             `UPDATE productos
             SET nombre = $1,
                 descripcion = $2,
                 imagen = $3,
                 codigo = $4,
-                precio_compra = $5,
-                precio_venta = $6,
+                categoria_id = $5,
+                precio_compra = $6,
+                precio_venta = $7,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $7
+            WHERE id = $8
             RETURNING *`,
             [
                 nombre,
                 descripcion ?? null,
                 imagen ?? null,
                 codigo,
+                categoria_id,
                 precio_compra,
                 precio_venta,
                 id
@@ -303,28 +347,28 @@ export const activarProducto = async (req, res) => {
 
 export const obtenerProductosInactivos = async (req, res) => {
     try {
-    const result = await pool.query(
-    `SELECT
-                    productos.id,
-                    productos.nombre,
-                    productos.descripcion,
-                    productos.imagen,
-                    productos.codigo,
-                    productos.categoria_id,
-                    categorias.nombre AS categoria_nombre,
-                    productos.precio_compra,
-                    productos.precio_venta,
-                    productos.stock,
-                    productos.stock_minimo,
-                    productos.activo,
-                    productos.created_at,
-                    productos.updated_at
-                FROM productos
-                LEFT JOIN categorias
-                    ON productos.categoria_id = categorias.id
-                WHERE productos.activo = false
-                ORDER BY productos.nombre ASC`
-    );
+        const result = await pool.query(
+            `SELECT
+                productos.id,
+                productos.nombre,
+                productos.descripcion,
+                productos.imagen,
+                productos.codigo,
+                productos.categoria_id,
+                categorias.nombre AS categoria_nombre,
+                productos.precio_compra,
+                productos.precio_venta,
+                productos.stock,
+                productos.stock_minimo,
+                productos.activo,
+                productos.created_at,
+                productos.updated_at
+            FROM productos
+            LEFT JOIN categorias
+                ON productos.categoria_id = categorias.id
+            WHERE productos.activo = false
+            ORDER BY productos.nombre ASC`
+        );
 
         return res.status(200).json(result.rows);
     } catch (error) {
