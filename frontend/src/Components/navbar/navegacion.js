@@ -37,4 +37,9 @@ export const privateRoutes = [
         path: '/ventas',
         icon: FaCashRegister
     },
+    {
+        name: 'Proveedores',
+        path: '/proveedores',
+        icon: FaTruck
+    },
 ]

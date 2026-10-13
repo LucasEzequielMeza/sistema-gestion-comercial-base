@@ -20,6 +20,8 @@ import VentasForm from './Components/ventas/VentaForm'
 import VentasDetalle from './Components/ventas/VentaDetalle'
 import ProveedoresPage from './Pages/ProveedoresPage'
 import ProveedoresForm from './Components/proveedores/ProveedoresForm'
+import CategoriasPage from './Pages/CategoriasPage'
+import CategoriasForm from './Components/categorias/CategoriasForm'
 
 function App() {
 
@@ -86,6 +88,10 @@ function App() {
                             {/*Proveedores */}
                             <Route path='/proveedores' element={<ProveedoresPage />}/>
                             <Route path='/proveedores/nuevo' element={<ProveedoresForm/>}/>
+
+                            {/*Categorias */}
+                            <Route path='/categorias' element={<CategoriasPage />}/>
+                            <Route path='/categorias/nuevo' element={<CategoriasForm/>}/>
 
                             {/* Ruta inexistente */}
                             <Route path="*" element={<Navigate to="/dashboard" replace />}/>
