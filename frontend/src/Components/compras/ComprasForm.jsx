@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { FaExclamationTriangle, FaTimes, FaPlus, FaTrash, FaShoppingCart } from 'react-icons/fa'
 import Card from '../UI/Card'
 import Input from '../UI/Input'
@@ -9,6 +9,9 @@ import axios from '../../Api/axios'
 
 function CompraForm() {
     const navigate = useNavigate()
+    const { id } = useParams()
+    const modoEdicion = Boolean(id)
+
     const [proveedores, setProveedores] = useState([])
     const [productos, setProductos] = useState([])
     const [proveedorId, setProveedorId] = useState('')
@@ -21,27 +24,94 @@ function CompraForm() {
     const [error, setError] = useState('')
     const [filaDuplicada, setFilaDuplicada] = useState(null)
     const [guardando, setGuardando] = useState(false)
+    const [cargandoCompra, setCargandoCompra] = useState(Boolean(id))
+    const [cargandoProductos, setCargandoProductos] = useState(false)
 
     useEffect(() => {
         const cargarDatos = async () => {
             try {
-                const [respuestaProveedores, respuestaProductos] = await Promise.all([
-                    axios.get('/proveedores'),
-                    axios.get('/productos')
-                ])
-
+                const respuestaProveedores = await axios.get('/proveedores')
                 const listaProveedores = respuestaProveedores.data.proveedores ?? respuestaProveedores.data
-                const listaProductos = respuestaProductos.data.productos ?? respuestaProductos.data
 
                 setProveedores(listaProveedores.filter(proveedor => proveedor.activo))
-                setProductos(listaProductos.filter(producto => producto.activo))
+
+                if (modoEdicion) {
+                    const respuestaCompra = await axios.get(`/compras/${id}`)
+                    const compra = respuestaCompra.data
+
+                    if (compra.estado !== 'pendiente') {
+                        setError('Solo se pueden editar compras pendientes.')
+                        return
+                    }
+
+                    setProveedorId(compra.proveedor_id)
+                    setTipoComprobante(compra.tipo_comprobante || 'Factura')
+                    setNumeroComprobante(compra.numero_comprobante || '')
+                    setObservaciones(compra.observaciones || '')
+
+                    const respuestaProductosProveedor = await axios.get(
+                        `/proveedores/${compra.proveedor_id}/productos`
+                    )
+
+                    setProductos(
+                        (respuestaProductosProveedor.data.productos ?? respuestaProductosProveedor.data)
+                    )
+
+                    setDetalles(compra.detalles.map(detalle => ({
+                        producto_id: detalle.producto_id,
+                        cantidad: detalle.cantidad,
+                        costo_unitario: detalle.costo_unitario
+                    })))
+                }
             } catch (error) {
-                setError(error.response?.data?.message || 'No se pudieron cargar los proveedores y productos.')
+                setError(
+                    error.response?.data?.message ||
+                    'No se pudieron cargar los proveedores, productos o datos de la compra.'
+                )
+            } finally {
+                setCargandoCompra(false)
             }
         }
 
         cargarDatos()
-    }, [])
+    }, [id, modoEdicion])
+
+    const cambiarProveedor = async (nuevoProveedorId) => {
+        setProveedorId(nuevoProveedorId)
+        setProductos([])
+        setDetalles([
+            { producto_id: '', cantidad: 1, costo_unitario: 0 }
+        ])
+        setError('')
+        setFilaDuplicada(null)
+
+        if (!nuevoProveedorId) {
+            return
+        }
+
+        setCargandoProductos(true)
+
+        try {
+            const respuesta = await axios.get(
+                `/proveedores/${nuevoProveedorId}/productos`
+            )
+
+            const listaProductos = respuesta.data.productos ?? respuesta.data
+
+            setProductos(listaProductos.filter(producto => producto.activo))
+
+            if (listaProductos.filter(producto => producto.activo).length === 0) {
+                setError('Este proveedor todavía no tiene productos activos asociados.')
+            }
+        } catch (error) {
+            setError(
+                error.response?.data?.message ||
+                'No se pudieron cargar los productos de este proveedor.'
+            )
+        } finally {
+            setCargandoProductos(false)
+        }
+    }
 
     const actualizarDetalle = (indice, campo, valor) => {
         setDetalles(detallesActuales =>
@@ -84,6 +154,11 @@ function CompraForm() {
             return
         }
 
+        if (detalles.length === 0) {
+            setError('Agregá al menos un producto a la compra.')
+            return
+        }
+
         if (detalles.some(detalle => !detalle.producto_id)) {
             setError('Seleccioná un producto en cada renglón de la compra.')
             return
@@ -115,7 +190,7 @@ function CompraForm() {
         setGuardando(true)
 
         try {
-            await axios.post('/compras', {
+            const datosCompra = {
                 proveedor_id: proveedorId,
                 tipo_comprobante: tipoComprobante,
                 numero_comprobante: numeroComprobante,
@@ -125,7 +200,13 @@ function CompraForm() {
                     cantidad: Number(detalle.cantidad),
                     costo_unitario: Number(detalle.costo_unitario)
                 }))
-            })
+            }
+
+            if (modoEdicion) {
+                await axios.put(`/compras/${id}`, datosCompra)
+            } else {
+                await axios.post('/compras', datosCompra)
+            }
 
             navigate('/compras')
         } catch (error) {
@@ -136,7 +217,10 @@ function CompraForm() {
                 const primerError = erroresValidacion[0]
                 setError(primerError.message || respuesta.message || 'Revisá los datos ingresados.')
             } else {
-                setError(respuesta?.message || 'No se pudo registrar la compra. Revisá los datos e intentá nuevamente.')
+                setError(
+                    respuesta?.message ||
+                    `No se pudo ${modoEdicion ? 'actualizar' : 'registrar'} la compra. Revisá los datos e intentá nuevamente.`
+                )
             }
         } finally {
             setGuardando(false)
@@ -152,6 +236,14 @@ function CompraForm() {
 
     const claseSelect = "my-2 block w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 transition focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-100"
 
+    if (cargandoCompra) {
+        return (
+            <div className="mx-auto w-full max-w-5xl p-8 text-center text-stone-600">
+                Cargando compra...
+            </div>
+        )
+    }
+
     return (
         <div className="mx-auto w-full max-w-5xl space-y-6 pb-8">
             <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
@@ -160,10 +252,12 @@ function CompraForm() {
                         Inventario / Compras
                     </p>
                     <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">
-                        Registrar compra
+                        {modoEdicion ? 'Editar compra' : 'Registrar compra'}
                     </h1>
                     <p className="mt-1 text-sm leading-6 text-stone-500">
-                        Cargá el proveedor, el comprobante y los productos recibidos.
+                        {modoEdicion
+                            ? 'Modificá los datos y los productos de la compra pendiente.'
+                            : 'Cargá el proveedor, el comprobante y los productos recibidos.'}
                     </p>
                 </div>
 
@@ -216,9 +310,10 @@ function CompraForm() {
                             <select
                                 id="proveedor"
                                 value={proveedorId}
-                                onChange={e => setProveedorId(e.target.value)}
+                                onChange={e => cambiarProveedor(e.target.value)}
                                 className={claseSelect}
                                 required
+                                disabled={guardando}
                             >
                                 <option value="">Seleccionar proveedor</option>
                                 {proveedores.map(proveedor => (
@@ -285,107 +380,127 @@ function CompraForm() {
                         </span>
                     </div>
 
-                    <div className="space-y-4">
-                        {detalles.map((detalle, indice) => (
-                            <div
-                                key={indice}
-                                className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4 sm:p-5"
-                            >
-                                <div className="mb-4 flex items-center justify-between gap-3">
-                                    <h3 className="text-sm font-bold text-stone-800">
-                                        Producto {indice + 1}
-                                    </h3>
+                    {!proveedorId ? (
+                        <p className="rounded-xl bg-stone-50 p-4 text-sm text-stone-500">
+                            Seleccioná un proveedor para consultar sus productos.
+                        </p>
+                    ) : cargandoProductos ? (
+                        <p className="rounded-xl bg-stone-50 p-4 text-sm text-stone-500">
+                            Cargando productos del proveedor...
+                        </p>
+                    ) : productos.length === 0 ? (
+                        <p className="rounded-xl bg-stone-50 p-4 text-sm text-stone-500">
+                            Este proveedor no tiene productos disponibles asociados.
+                        </p>
+                    ) : (
+                        <div className="space-y-4">
+                            {detalles.map((detalle, indice) => (
+                                <div
+                                    key={indice}
+                                    className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4 sm:p-5"
+                                >
+                                    <div className="mb-4 flex items-center justify-between gap-3">
+                                        <h3 className="text-sm font-bold text-stone-800">
+                                            Producto {indice + 1}
+                                        </h3>
 
-                                    {detalles.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => quitarProducto(indice)}
-                                            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                                        >
-                                            <FaTrash size={12} />
-                                            Quitar
-                                        </button>
-                                    )}
-                                </div>
+                                        {detalles.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => quitarProducto(indice)}
+                                                className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                                            >
+                                                <FaTrash size={12} />
+                                                Quitar
+                                            </button>
+                                        )}
+                                    </div>
 
-                                <div className="grid grid-cols-1 gap-x-5 gap-y-3 md:grid-cols-3">
-                                    <div className="md:col-span-3">
-                                        <Label>Producto</Label>
-                                        <select
-                                            value={detalle.producto_id}
-                                            onChange={e => {
-                                                const productoId = e.target.value
+                                    <div className="grid grid-cols-1 gap-x-5 gap-y-3 md:grid-cols-3">
+                                        <div className="md:col-span-3">
+                                            <Label>Producto</Label>
+                                            <select
+                                                value={detalle.producto_id}
+                                                onChange={e => {
+                                                    const productoId = e.target.value
 
-                                                if (
-                                                    productoId &&
-                                                    detalles.some((item, i) =>
-                                                        i !== indice && item.producto_id === productoId
+                                                    if (
+                                                        productoId &&
+                                                        detalles.some((item, i) =>
+                                                            i !== indice && item.producto_id === productoId
+                                                        )
+                                                    ) {
+                                                        setFilaDuplicada(indice)
+                                                        return
+                                                    }
+
+                                                    setError('')
+
+                                                    const producto = productos.find(
+                                                        item => item.id === productoId
                                                     )
-                                                ) {
-                                                    setFilaDuplicada(indice)
-                                                    return
+
+                                                    actualizarDetalle(indice, 'producto_id', productoId)
+                                                    actualizarDetalle(
+                                                        indice,
+                                                        'costo_unitario',
+                                                        producto ? producto.precio_compra_proveedor : 0
+                                                    )
+                                                }}
+                                                className={claseSelect}
+                                                required
+                                            >
+                                                <option value="">Seleccionar producto</option>
+                                                {productos.map(producto => (
+                                                    <option key={producto.id} value={producto.id}>
+                                                        {producto.nombre} ({producto.codigo}) — {formatoMoneda(producto.precio_compra_proveedor)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <Label>Cantidad</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                step="1"
+                                                value={detalle.cantidad}
+                                                onChange={e =>
+                                                    actualizarDetalle(indice, 'cantidad', e.target.value)
                                                 }
+                                            />
+                                        </div>
 
-                                                setError('')
+                                        <div>
+                                            <Label>Costo unitario</Label>
+                                            <Input
+                                                type="number"
+                                                value={detalle.costo_unitario}
+                                                readOnly
+                                                required
+                                            />
+                                        </div>
 
-                                                const producto = productos.find(item => item.id === productoId)
-
-                                                actualizarDetalle(indice, 'producto_id', productoId)
-                                                actualizarDetalle(indice, 'costo_unitario', producto ? producto.precio_compra : 0)
-                                            }}
-                                            className={claseSelect}
-                                            required
-                                        >
-                                            <option value="">Seleccionar producto</option>
-                                            {productos.map(producto => (
-                                                <option key={producto.id} value={producto.id}>
-                                                    {producto.nombre} ({producto.codigo})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <Label>Cantidad</Label>
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={detalle.cantidad}
-                                            onChange={(e) =>
-                                                actualizarDetalle(indice, "cantidad", e.target.value)
-                                            }
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <Label>Costo unitario</Label>
-                                        <Input
-                                            type="number"
-                                            value={detalle.costo_unitario}
-                                            onChange={e => actualizarDetalle(indice, 'costo_unitario', e.target.value)}
-                                            readOnly
-                                            required
-                                        />
-                                    </div>
-
-                                    <div className="flex flex-col justify-center rounded-xl border border-stone-200 bg-white px-4 py-3 md:mt-2">
-                                        <span className="text-xs font-medium text-stone-500">
-                                            Subtotal
-                                        </span>
-                                        <span className="mt-1 text-lg font-bold text-stone-900">
-                                            {formatoMoneda(Number(detalle.cantidad) * Number(detalle.costo_unitario))}
-                                        </span>
+                                        <div className="flex flex-col justify-center rounded-xl border border-stone-200 bg-white px-4 py-3 md:mt-2">
+                                            <span className="text-xs font-medium text-stone-500">
+                                                Subtotal
+                                            </span>
+                                            <span className="mt-1 text-lg font-bold text-stone-900">
+                                                {formatoMoneda(Number(detalle.cantidad) * Number(detalle.costo_unitario))}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
 
                     <button
                         type="button"
                         onClick={agregarProducto}
-                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-500 hover:bg-stone-50 sm:w-auto"
+                        disabled={!proveedorId || cargandoProductos || productos.length === 0}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-500 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                     >
                         <FaPlus size={12} />
                         Agregar otro producto
@@ -418,10 +533,12 @@ function CompraForm() {
 
                     <Button
                         type="submit"
-                        disabled={guardando}
+                        disabled={guardando || cargandoProductos}
                         className="w-full sm:w-auto"
                     >
-                        {guardando ? 'Registrando...' : 'Registrar compra'}
+                        {guardando
+                            ? (modoEdicion ? 'Guardando cambios...' : 'Registrando...')
+                            : (modoEdicion ? 'Guardar cambios' : 'Registrar compra')}
                     </Button>
                 </div>
             </form>

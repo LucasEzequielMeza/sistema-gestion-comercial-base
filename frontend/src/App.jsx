@@ -61,6 +61,7 @@ function App() {
                             {/* Compras */}
                             <Route path="/compras" element={<ComprasPage />} />
                             <Route path="/compras/crear" element={<ComprasForm />} />
+                            <Route path="/compras/editar/:id" element={<ComprasForm />} />
 
                             {/* Ventas */}
                             <Route path="/ventas" element={<VentasPage />} />

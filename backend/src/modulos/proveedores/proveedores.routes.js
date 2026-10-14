@@ -7,7 +7,10 @@ import {
     actualizarProveedor,
     buscarProveedores,
     desactivarProveedor,
-    activarProveedor
+    activarProveedor,
+    obtenerProductosProveedor,
+    asociarProductoProveedor,
+    quitarProductoProveedor
 } from './proveedores.controller.js';
 
 import { estaAutenticado } from '../../middleware/autenticacion.middleware.js';
@@ -19,6 +22,12 @@ router.post('/', estaAutenticado(), crearProveedor);
 router.get('/buscar', estaAutenticado(), buscarProveedores);
 
 router.get('/', estaAutenticado(), obtenerProveedores);
+
+router.get('/:id/productos', estaAutenticado(), obtenerProductosProveedor);
+
+router.post('/:id/productos', estaAutenticado(), asociarProductoProveedor);
+
+router.delete('/:id/productos/:productoId', estaAutenticado(), quitarProductoProveedor);
 
 router.get('/:id', estaAutenticado(), obtenerProveedorPorId);
 

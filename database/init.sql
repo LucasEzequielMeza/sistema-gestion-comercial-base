@@ -221,3 +221,38 @@ CREATE INDEX idx_pagos_venta_metodo
 
 CREATE INDEX idx_pagos_venta_venta
     ON pagos_venta(venta_id);
+
+    
+-- Relaciona los productos con los proveedores que los venden.
+CREATE TABLE proveedores_productos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proveedor_id UUID NOT NULL,
+    producto_id UUID NOT NULL,
+    precio_compra NUMERIC(12,2) NOT NULL DEFAULT 0,
+    codigo_proveedor VARCHAR(100),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_proveedores_productos_proveedor
+        FOREIGN KEY (proveedor_id)
+        REFERENCES proveedores(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_proveedores_productos_producto
+        FOREIGN KEY (producto_id)
+        REFERENCES productos(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT chk_proveedores_productos_precio
+        CHECK (precio_compra >= 0),
+
+    CONSTRAINT uq_proveedores_productos
+        UNIQUE (proveedor_id, producto_id)
+);
+
+-- Índices para consultar rápidamente los productos de cada proveedor.
+CREATE INDEX idx_proveedores_productos_proveedor
+    ON proveedores_productos(proveedor_id);
+
+CREATE INDEX idx_proveedores_productos_producto
+    ON proveedores_productos(producto_id);

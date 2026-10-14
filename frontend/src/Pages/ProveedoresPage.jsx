@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import axios from '../Api/axios'
 import { useProveedores } from '../Context/ContextoProveedores'
 import ProveedoresForm from '../Components/proveedores/ProveedoresForm'
 
@@ -30,6 +31,18 @@ function ProveedoresPage() {
     const [proveedorCambioEstado, setProveedorCambioEstado] = useState(null)
     const [cambiandoEstado, setCambiandoEstado] = useState(false)
 
+    const [proveedorProductos, setProveedorProductos] = useState(null)
+    const [productosAsociados, setProductosAsociados] = useState([])
+    const [catalogoProductos, setCatalogoProductos] = useState([])
+    const [productoSeleccionado, setProductoSeleccionado] = useState('')
+    const [precioCompra, setPrecioCompra] = useState('')
+    const [codigoProveedor, setCodigoProveedor] = useState('')
+    const [cargandoProductos, setCargandoProductos] = useState(false)
+    const [guardandoAsociacion, setGuardandoAsociacion] = useState(false)
+    const [productoEnEdicion, setProductoEnEdicion] = useState(null)
+    const [mensajeProductos, setMensajeProductos] = useState('')
+    const [errorProductos, setErrorProductos] = useState('')
+
     useEffect(() => {
         cargarProveedores()
     }, [])
@@ -37,7 +50,6 @@ function ProveedoresPage() {
     const cargarProveedores = async () => {
 
         setResultadosBusqueda(null)
-
         await obtenerProveedores()
 
     }
@@ -226,6 +238,254 @@ function ProveedoresPage() {
 
     }
 
+    const abrirProductosProveedor = async (proveedorItem) => {
+
+        setProveedorProductos(proveedorItem)
+        setProductosAsociados([])
+        setCatalogoProductos([])
+        setProductoSeleccionado('')
+        setPrecioCompra('')
+        setCodigoProveedor('')
+        setProductoEnEdicion(null)
+        setMensajeProductos('')
+        setErrorProductos('')
+        setCargandoProductos(true)
+
+        try {
+
+            const [respuestaAsociados, respuestaCatalogo] = await Promise.all([
+                axios.get(`/proveedores/${proveedorItem.id}/productos`),
+                axios.get('/productos')
+            ])
+
+            const datosAsociados = respuestaAsociados.data
+            const datosCatalogo = respuestaCatalogo.data
+
+            setProductosAsociados(
+                Array.isArray(datosAsociados)
+                    ? datosAsociados
+                    : Array.isArray(datosAsociados.productos)
+                        ? datosAsociados.productos
+                        : []
+            )
+
+            setCatalogoProductos(
+                Array.isArray(datosCatalogo)
+                    ? datosCatalogo
+                    : Array.isArray(datosCatalogo.productos)
+                        ? datosCatalogo.productos
+                        : []
+            )
+
+        } catch (error) {
+
+            console.error('Error al cargar los productos del proveedor:', error)
+
+            setErrorProductos(
+                error.response?.data?.mensaje ||
+                error.response?.data?.error ||
+                'No se pudieron cargar los productos. Verificá la conexión con el servidor.'
+            )
+
+        } finally {
+
+            setCargandoProductos(false)
+
+        }
+
+    }
+
+    const recargarProductosProveedor = async () => {
+
+        if (!proveedorProductos) {
+            return
+        }
+
+        const respuesta = await axios.get(
+            `/proveedores/${proveedorProductos.id}/productos`
+        )
+
+        const datos = respuesta.data
+
+        setProductosAsociados(
+            Array.isArray(datos)
+                ? datos
+                : Array.isArray(datos.productos)
+                    ? datos.productos
+                    : []
+        )
+
+    }
+
+    const obtenerIdProducto = (producto) => {
+        return producto.producto_id || producto.id
+    }
+
+    const prepararEdicionProducto = (producto) => {
+
+        setProductoEnEdicion(producto)
+        setProductoSeleccionado(String(obtenerIdProducto(producto)))
+        setPrecioCompra(String(producto.precio_compra_proveedor ?? ''))
+        setCodigoProveedor(producto.codigo_proveedor || '')
+        setMensajeProductos('')
+        setErrorProductos('')
+
+    }
+
+    const cancelarEdicionProducto = () => {
+
+        setProductoEnEdicion(null)
+        setProductoSeleccionado('')
+        setPrecioCompra('')
+        setCodigoProveedor('')
+        setMensajeProductos('')
+        setErrorProductos('')
+
+    }
+
+    const guardarProductoProveedor = async (e) => {
+
+        e.preventDefault()
+
+        if (!proveedorProductos || guardandoAsociacion) {
+            return
+        }
+
+        if (!productoSeleccionado) {
+            setErrorProductos('Seleccioná un producto.')
+            return
+        }
+
+        if (precioCompra.trim() === '' || !Number.isFinite(Number(precioCompra)) || Number(precioCompra) < 0) {
+            setErrorProductos('Ingresá un precio de compra válido.')
+            return
+        }
+
+        setGuardandoAsociacion(true)
+        setErrorProductos('')
+        setMensajeProductos('')
+
+        try {
+
+            await axios.post(
+                `/proveedores/${proveedorProductos.id}/productos`,
+                {
+                    producto_id: productoSeleccionado,
+                    precio_compra: Number(precioCompra),
+                    codigo_proveedor: codigoProveedor.trim() || null
+                }
+            )
+
+            await recargarProductosProveedor()
+
+            setProductoEnEdicion(null)
+            setProductoSeleccionado('')
+            setPrecioCompra('')
+            setCodigoProveedor('')
+            setMensajeProductos('Producto asociado al proveedor correctamente.')
+
+        } catch (error) {
+
+            console.error('Error al asociar el producto:', error)
+
+            setErrorProductos(
+                error.response?.data?.mensaje ||
+                error.response?.data?.error ||
+                'No se pudo guardar la asociación del producto.'
+            )
+
+        } finally {
+
+            setGuardandoAsociacion(false)
+
+        }
+
+    }
+
+    const quitarProductoProveedor = async (producto) => {
+
+        if (!proveedorProductos) {
+            return
+        }
+
+        const idProducto = obtenerIdProducto(producto)
+
+        const confirmar = window.confirm(
+            `¿Querés quitar "${producto.nombre}" de este proveedor? El producto no se eliminará del sistema.`
+        )
+
+        if (!confirmar) {
+            return
+        }
+
+        setErrorProductos('')
+        setMensajeProductos('')
+
+        try {
+
+            await axios.delete(
+                `/proveedores/${proveedorProductos.id}/productos/${idProducto}`
+            )
+
+            setProductosAsociados((actuales) =>
+                actuales.filter(
+                    (item) => obtenerIdProducto(item) !== idProducto
+                )
+            )
+
+            if (productoEnEdicion && obtenerIdProducto(productoEnEdicion) === idProducto) {
+                cancelarEdicionProducto()
+            }
+
+            setMensajeProductos('Se quitó el producto de este proveedor.')
+
+        } catch (error) {
+
+            console.error('Error al quitar el producto del proveedor:', error)
+
+            setErrorProductos(
+                error.response?.data?.mensaje ||
+                error.response?.data?.error ||
+                'No se pudo quitar el producto de este proveedor.'
+            )
+
+        }
+
+    }
+
+    const cerrarProductosProveedor = () => {
+
+        if (guardandoAsociacion) {
+            return
+        }
+
+        setProveedorProductos(null)
+        setProductosAsociados([])
+        setCatalogoProductos([])
+        setProductoEnEdicion(null)
+        setMensajeProductos('')
+        setErrorProductos('')
+
+    }
+
+    const productosDisponibles = catalogoProductos.filter((producto) => {
+
+        const idProducto = String(obtenerIdProducto(producto))
+
+        if (producto.activo === false) {
+            return false
+        }
+
+        if (productoEnEdicion) {
+            return idProducto === String(obtenerIdProducto(productoEnEdicion))
+        }
+
+        return !productosAsociados.some(
+            (asociado) => String(obtenerIdProducto(asociado)) === idProducto
+        )
+
+    })
+
     const proveedoresBase = filtroEstado === 'inactivos'
         ? proveedoresInactivos
         : filtroEstado === 'todos'
@@ -256,9 +516,19 @@ function ProveedoresPage() {
 
     }
 
+    const formatoPrecio = (precio) => {
+        return Number(precio || 0).toLocaleString('es-AR', {
+            style: 'currency',
+            currency: 'ARS',
+            minimumFractionDigits: 2
+        })
+    }
+
     const tarjetaClase = 'rounded-xl border border-gray-200 bg-white p-5 shadow-sm'
 
     const botonSecundario = 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50'
+
+    const campoClase = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
 
     return (
         <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
@@ -354,7 +624,7 @@ function ProveedoresPage() {
                                 value={busqueda}
                                 onChange={(e) => setBusqueda(e.target.value)}
                                 placeholder="Buscar por nombre o CUIT..."
-                                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                className={campoClase}
                             />
                         </div>
 
@@ -424,7 +694,7 @@ function ProveedoresPage() {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[850px] text-left text-sm">
+                            <table className="w-full min-w-[950px] text-left text-sm">
                                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                     <tr>
                                         <th className="px-5 py-3 font-semibold">Proveedor</th>
@@ -478,6 +748,14 @@ function ProveedoresPage() {
 
                                             <td className="px-5 py-4">
                                                 <div className="flex justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => abrirProductosProveedor(proveedorItem)}
+                                                        className="rounded-md border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-50"
+                                                    >
+                                                        Productos
+                                                    </button>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => abrirFormularioEdicion(proveedorItem.id)}
@@ -554,6 +832,260 @@ function ProveedoresPage() {
                             cargando={cargando}
                             error={proveedorError}
                         />
+                    </div>
+                </div>
+            )}
+
+            {proveedorProductos && (
+                <div
+                    className="fixed inset-0 z-[55] flex items-center justify-center overflow-y-auto bg-gray-900/50 p-4"
+                    onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) {
+                            cerrarProductosProveedor()
+                        }
+                    }}
+                >
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="tituloProductosProveedor"
+                        className="my-auto max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:p-7"
+                    >
+                        <div className="mb-6 flex items-start justify-between gap-4">
+                            <div>
+                                <h2 id="tituloProductosProveedor" className="text-xl font-bold text-gray-900">
+                                    Productos del proveedor
+                                </h2>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    {proveedorProductos.nombre}
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={cerrarProductosProveedor}
+                                disabled={guardandoAsociacion}
+                                className="rounded-lg px-3 py-1 text-2xl leading-none text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                                aria-label="Cerrar productos del proveedor"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {mensajeProductos && (
+                            <div role="status" className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                                {mensajeProductos}
+                            </div>
+                        )}
+
+                        {errorProductos && (
+                            <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                {errorProductos}
+                            </div>
+                        )}
+
+                        {proveedorProductos.activo ? (
+                            <form
+                                onSubmit={guardarProductoProveedor}
+                                className="mb-7 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5"
+                            >
+                                <h3 className="mb-4 font-semibold text-gray-900">
+                                    {productoEnEdicion ? 'Editar producto asociado' : 'Asociar un producto'}
+                                </h3>
+
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+
+                                    <div className="sm:col-span-3">
+                                        <label htmlFor="productoProveedor" className="mb-1.5 block text-sm font-medium text-gray-700">
+                                            Producto *
+                                        </label>
+                                        <select
+                                            id="productoProveedor"
+                                            value={productoSeleccionado}
+                                            onChange={(e) => setProductoSeleccionado(e.target.value)}
+                                            className={campoClase}
+                                            disabled={cargandoProductos || guardandoAsociacion || Boolean(productoEnEdicion)}
+                                            required
+                                        >
+                                            <option value="">Seleccioná un producto</option>
+                                            {productosDisponibles.map((producto) => (
+                                                <option
+                                                    key={obtenerIdProducto(producto)}
+                                                    value={obtenerIdProducto(producto)}
+                                                >
+                                                    {producto.nombre} {producto.codigo ? `(${producto.codigo})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {!cargandoProductos && productosDisponibles.length === 0 && !productoEnEdicion && (
+                                            <p className="mt-1.5 text-xs text-gray-500">
+                                                No hay productos disponibles para asociar. Podés revisar los productos ya asociados en el listado.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="precioCompraProveedor" className="mb-1.5 block text-sm font-medium text-gray-700">
+                                            Precio de compra *
+                                        </label>
+                                        <input
+                                            id="precioCompraProveedor"
+                                            type="number"
+                                            value={precioCompra}
+                                            onChange={(e) => setPrecioCompra(e.target.value)}
+                                            className={campoClase}
+                                            placeholder="0,00"
+                                            required
+                                            disabled={guardandoAsociacion}
+                                        />
+                                    </div>
+
+                                    <div className="sm:col-span-2">
+                                        <label htmlFor="codigoProveedor" className="mb-1.5 block text-sm font-medium text-gray-700">
+                                            Código del producto según el proveedor
+                                        </label>
+                                        <input
+                                            id="codigoProveedor"
+                                            type="text"
+                                            value={codigoProveedor}
+                                            onChange={(e) => setCodigoProveedor(e.target.value)}
+                                            className={campoClase}
+                                            placeholder="Opcional"
+                                            maxLength={100}
+                                            disabled={guardandoAsociacion}
+                                        />
+                                    </div>
+
+                                </div>
+
+                                <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                    {productoEnEdicion && (
+                                        <button
+                                            type="button"
+                                            onClick={cancelarEdicionProducto}
+                                            disabled={guardandoAsociacion}
+                                            className={botonSecundario}
+                                        >
+                                            Cancelar edición
+                                        </button>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={guardandoAsociacion || cargandoProductos}
+                                        className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {guardandoAsociacion
+                                            ? 'Guardando...'
+                                            : productoEnEdicion
+                                                ? 'Guardar cambios'
+                                                : 'Asociar producto'}
+                                    </button>
+                                </div>
+                            </form>
+                        ) : (
+                            <div className="mb-7 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                                Este proveedor está inactivo. Podés consultar sus asociaciones, pero tenés que activarlo para agregar o modificar productos.
+                            </div>
+                        )}
+
+                        <div className="overflow-hidden rounded-xl border border-gray-200">
+                            <div className="flex flex-col gap-1 border-b border-gray-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <h3 className="font-semibold text-gray-900">
+                                    Productos asociados
+                                </h3>
+                                <p className="text-sm text-gray-500">
+                                    {productosAsociados.length} producto(s)
+                                </p>
+                            </div>
+
+                            {cargandoProductos ? (
+                                <div className="px-4 py-10 text-center text-sm text-gray-500">
+                                    Cargando productos...
+                                </div>
+                            ) : productosAsociados.length === 0 ? (
+                                <div className="px-4 py-10 text-center">
+                                    <p className="font-medium text-gray-800">
+                                        Todavía no hay productos asociados
+                                    </p>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Seleccioná un producto arriba para comenzar.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[650px] text-left text-sm">
+                                        <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                                            <tr>
+                                                <th className="px-4 py-3 font-semibold">Producto</th>
+                                                <th className="px-4 py-3 font-semibold">Código proveedor</th>
+                                                <th className="px-4 py-3 font-semibold">Precio de compra</th>
+                                                <th className="px-4 py-3 text-right font-semibold">Acciones</th>
+                                            </tr>
+                                        </thead>
+
+                                        <tbody className="divide-y divide-gray-100">
+                                            {productosAsociados.map((producto) => (
+                                                <tr key={obtenerIdProducto(producto)} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-4">
+                                                        <p className="font-medium text-gray-900">
+                                                            {producto.nombre}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-gray-500">
+                                                            {producto.codigo || 'Sin código general'}
+                                                        </p>
+                                                    </td>
+
+                                                    <td className="px-4 py-4 text-gray-700">
+                                                        {producto.codigo_proveedor || '—'}
+                                                    </td>
+
+                                                    <td className="px-4 py-4 font-medium text-gray-900">
+                                                        {formatoPrecio(producto.precio_compra_proveedor)}
+                                                    </td>
+
+                                                    <td className="px-4 py-4">
+                                                        <div className="flex justify-end gap-2">
+                                                            {proveedorProductos.activo && (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => prepararEdicionProducto(producto)}
+                                                                        className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
+                                                                    >
+                                                                        Editar
+                                                                    </button>
+
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => quitarProductoProveedor(producto)}
+                                                                        className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                                                                    >
+                                                                        Quitar
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-6 flex justify-end border-t border-gray-100 pt-4">
+                            <button
+                                type="button"
+                                onClick={cerrarProductosProveedor}
+                                disabled={guardandoAsociacion}
+                                className={botonSecundario}
+                            >
+                                Cerrar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

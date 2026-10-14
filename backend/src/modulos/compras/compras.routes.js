@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import {
     crearCompra,
+    editarCompra,
     obtenerCompras,
     obtenerCompraPorId,
     confirmarCompra,
@@ -15,6 +16,8 @@ const router = Router();
 router.post('/', estaAutenticado(), crearCompra);
 
 router.get('/', estaAutenticado(), obtenerCompras);
+
+router.put('/:id', estaAutenticado(), editarCompra);
 
 router.get('/:id', estaAutenticado(), obtenerCompraPorId);
 

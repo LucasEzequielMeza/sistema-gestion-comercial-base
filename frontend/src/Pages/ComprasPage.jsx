@@ -14,7 +14,8 @@ import {
     FaCheckCircle,
     FaDollarSign,
     FaEye,
-    FaBoxOpen
+    FaBoxOpen,
+    FaEdit
 } from 'react-icons/fa'
 
 function ComprasPage() {
@@ -410,6 +411,17 @@ function ComprasPage() {
 
                                                     {compra.estado === 'pendiente' ? (
                                                         <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => navigate(`/compras/editar/${compra.id}`)}
+                                                                disabled={procesando !== null}
+                                                                title="Editar compra"
+                                                                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                            >
+                                                                <FaEdit />
+                                                                Editar
+                                                            </button>
+
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setCompraSeleccionada({ compra, accion: 'confirmar' })}

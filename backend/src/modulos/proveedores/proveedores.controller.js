@@ -14,7 +14,6 @@ export const crearProveedor = async (req, res, next) => {
 
     try {
 
-        // Insertamos el proveedor en la base de datos
         const result = await pool.query(
             `INSERT INTO proveedores (
                 nombre,
@@ -38,19 +37,15 @@ export const crearProveedor = async (req, res, next) => {
             ]
         );
 
-        const proveedorCreado = result.rows[0];
-
-        // Devolvemos el proveedor creado
         res.status(201).json({
             message: 'Proveedor creado exitosamente',
-            proveedor: proveedorCreado
+            proveedor: result.rows[0]
         });
 
     } catch (error) {
 
         console.error('Error al crear el proveedor:', error);
 
-        // Verificamos si el CUIT ya existe
         if (error.code === '23505') {
             return res.status(409).json({
                 message: 'El CUIT del proveedor ya existe'
@@ -169,7 +164,6 @@ export const actualizarProveedor = async (req, res) => {
 
         console.error('Error al actualizar el proveedor:', error);
 
-        // Verificamos si el CUIT ya existe
         if (error.code === '23505') {
             return res.status(409).json({
                 message: 'El CUIT del proveedor ya existe'
@@ -184,7 +178,7 @@ export const actualizarProveedor = async (req, res) => {
 
 export const buscarProveedores = async (req, res) => {
 
-    const { search } = req.query;
+    const { search = '' } = req.query;
 
     try {
 
@@ -277,6 +271,188 @@ export const activarProveedor = async (req, res) => {
 
         res.status(500).json({
             message: 'Error al activar el proveedor'
+        });
+    }
+};
+
+// Obtenemos los productos asociados a un proveedor.
+export const obtenerProductosProveedor = async (req, res) => {
+
+    const { id } = req.params;
+
+    try {
+
+        const proveedor = await pool.query(
+            `SELECT id
+            FROM proveedores
+            WHERE id = $1`,
+            [id]
+        );
+
+        if (proveedor.rows.length === 0) {
+            return res.status(404).json({
+                message: 'Proveedor no encontrado'
+            });
+        }
+
+        const result = await pool.query(
+            `SELECT
+                productos.id,
+                productos.nombre,
+                productos.descripcion,
+                productos.codigo,
+                productos.categoria_id,
+                productos.precio_compra AS precio_compra_general,
+                productos.precio_venta,
+                productos.stock,
+                productos.stock_minimo,
+                productos.activo,
+                proveedores_productos.precio_compra AS precio_compra_proveedor,
+                proveedores_productos.codigo_proveedor,
+                proveedores_productos.created_at,
+                proveedores_productos.updated_at
+            FROM proveedores_productos
+            INNER JOIN productos
+                ON productos.id = proveedores_productos.producto_id
+            WHERE proveedores_productos.proveedor_id = $1
+            ORDER BY productos.nombre ASC`,
+            [id]
+        );
+
+        res.status(200).json(result.rows);
+
+    } catch (error) {
+
+        console.error('Error al obtener los productos del proveedor:', error);
+
+        res.status(500).json({
+            message: 'Error al obtener los productos del proveedor'
+        });
+    }
+};
+
+// Asociamos un producto a un proveedor o actualizamos su costo.
+export const asociarProductoProveedor = async (req, res) => {
+
+    const { id } = req.params;
+
+    const {
+        producto_id,
+        precio_compra,
+        codigo_proveedor
+    } = req.body;
+
+    if (
+        !producto_id ||
+        precio_compra === undefined ||
+        precio_compra === null ||
+        precio_compra === '' ||
+        !Number.isFinite(Number(precio_compra)) ||
+        Number(precio_compra) < 0
+    ) {
+        return res.status(400).json({
+            message: 'El producto y un precio de compra válido son obligatorios'
+        });
+    }
+
+    try {
+
+        const proveedor = await pool.query(
+            `SELECT id
+            FROM proveedores
+            WHERE id = $1
+            AND activo = true`,
+            [id]
+        );
+
+        if (proveedor.rows.length === 0) {
+            return res.status(404).json({
+                message: 'Proveedor no encontrado o inactivo'
+            });
+        }
+
+        const producto = await pool.query(
+            `SELECT id
+            FROM productos
+            WHERE id = $1
+            AND activo = true`,
+            [producto_id]
+        );
+
+        if (producto.rows.length === 0) {
+            return res.status(404).json({
+                message: 'Producto no encontrado o inactivo'
+            });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO proveedores_productos (
+                proveedor_id,
+                producto_id,
+                precio_compra,
+                codigo_proveedor
+            )
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (proveedor_id, producto_id)
+            DO UPDATE SET
+                precio_compra = EXCLUDED.precio_compra,
+                codigo_proveedor = EXCLUDED.codigo_proveedor,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING *`,
+            [
+                id,
+                producto_id,
+                Number(precio_compra),
+                codigo_proveedor || null
+            ]
+        );
+
+        res.status(200).json({
+            message: 'Producto asociado al proveedor exitosamente',
+            relacion: result.rows[0]
+        });
+
+    } catch (error) {
+
+        console.error('Error al asociar el producto al proveedor:', error);
+
+        res.status(500).json({
+            message: 'Error al asociar el producto al proveedor'
+        });
+    }
+};
+
+// Quitamos la relación sin eliminar el producto del catálogo.
+export const quitarProductoProveedor = async (req, res) => {
+
+    const { id, productoId } = req.params;
+
+    try {
+
+        const result = await pool.query(
+            `DELETE FROM proveedores_productos
+            WHERE proveedor_id = $1
+            AND producto_id = $2
+            RETURNING producto_id`,
+            [id, productoId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                message: 'El producto no está asociado a este proveedor'
+            });
+        }
+
+        res.status(200).json({
+            message: 'Producto quitado del proveedor exitosamente'
+        });
+
+    } catch (error) {
+
+        console.error('Error al quitar el producto del proveedor:', error);
+
+        res.status(500).json({
+            message: 'Error al quitar el producto del proveedor'
         });
     }
 };

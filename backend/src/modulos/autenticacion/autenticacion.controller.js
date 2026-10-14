@@ -1,4 +1,3 @@
-
 import bcrypt from 'bcrypt';
 import { pool } from '../../db.js';
 import { generarTokenDeAcceso } from './jwt.js';

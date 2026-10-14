@@ -167,6 +167,222 @@ export const crearCompra = async (req, res, next) => {
     }
 };
 
+export const editarCompra = async (req, res, next) => {
+    const { id } = req.params;
+    const validacion = crearCompraSchema.safeParse(req.body);
+
+    if (!validacion.success) {
+        return res.status(400).json({
+            message: 'Los datos de la compra no son válidos',
+            errores: validacion.error.issues
+        });
+    }
+
+    const {
+        proveedor_id,
+        tipo_comprobante,
+        numero_comprobante,
+        observaciones,
+        detalles
+    } = validacion.data;
+
+    let client;
+    let transaccionIniciada = false;
+
+    try {
+        client = await pool.connect();
+
+        await client.query('BEGIN');
+        transaccionIniciada = true;
+
+        const compraResult = await client.query(
+            `SELECT * FROM compras
+            WHERE id = $1
+            FOR UPDATE`,
+            [id]
+        );
+
+        if (compraResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
+
+            return res.status(404).json({
+                message: 'Compra no encontrada'
+            });
+        }
+
+        if (compraResult.rows[0].estado !== 'pendiente') {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
+
+            return res.status(400).json({
+                message: 'Solo se pueden editar compras pendientes'
+            });
+        }
+
+        const proveedor = await client.query(
+            `SELECT id FROM proveedores
+            WHERE id = $1 AND activo = true`,
+            [proveedor_id]
+        );
+
+        if (proveedor.rows.length === 0) {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
+
+            return res.status(404).json({
+                message: 'El proveedor no existe o está inactivo'
+            });
+        }
+
+        const tipoNormalizado = tipo_comprobante?.trim() || null;
+        const numeroNormalizado = numero_comprobante?.trim() || null;
+
+        if (tipoNormalizado && numeroNormalizado) {
+            const comprobanteExistente = await client.query(
+                `SELECT id FROM compras
+                WHERE proveedor_id = $1
+                AND tipo_comprobante = $2
+                AND numero_comprobante = $3
+                AND id <> $4
+                LIMIT 1`,
+                [
+                    proveedor_id,
+                    tipoNormalizado,
+                    numeroNormalizado,
+                    id
+                ]
+            );
+
+            if (comprobanteExistente.rows.length > 0) {
+                await client.query('ROLLBACK');
+                transaccionIniciada = false;
+
+                return res.status(409).json({
+                    message: 'Ya existe una compra registrada con este comprobante para este proveedor'
+                });
+            }
+        }
+
+        const productosValidados = new Set();
+        let total = 0;
+
+        const detallesCalculados = [];
+
+        for (const detalle of detalles) {
+            if (productosValidados.has(detalle.producto_id)) {
+                await client.query('ROLLBACK');
+                transaccionIniciada = false;
+
+                return res.status(400).json({
+                    message: 'No se puede incluir el mismo producto más de una vez'
+                });
+            }
+
+            productosValidados.add(detalle.producto_id);
+
+            const producto = await client.query(
+                `SELECT id FROM productos
+                WHERE id = $1 AND activo = true`,
+                [detalle.producto_id]
+            );
+
+            if (producto.rows.length === 0) {
+                await client.query('ROLLBACK');
+                transaccionIniciada = false;
+
+                return res.status(404).json({
+                    message: `El producto ${detalle.producto_id} no existe o está inactivo`
+                });
+            }
+
+            const subtotal = Number(
+                (detalle.cantidad * detalle.costo_unitario).toFixed(2)
+            );
+
+            total += subtotal;
+
+            detallesCalculados.push({
+                ...detalle,
+                subtotal
+            });
+        }
+
+        total = Number(total.toFixed(2));
+
+        const actualizacion = await client.query(
+            `UPDATE compras
+            SET proveedor_id = $1,
+                tipo_comprobante = $2,
+                numero_comprobante = $3,
+                observaciones = $4,
+                total = $5,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $6
+            RETURNING *`,
+            [
+                proveedor_id,
+                tipoNormalizado,
+                numeroNormalizado,
+                observaciones || null,
+                total,
+                id
+            ]
+        );
+
+        await client.query(
+            `DELETE FROM detalle_compras
+            WHERE compra_id = $1`,
+            [id]
+        );
+
+        for (const detalle of detallesCalculados) {
+            await client.query(
+                `INSERT INTO detalle_compras (
+                    compra_id, producto_id, cantidad,
+                    costo_unitario, subtotal
+                )
+                VALUES ($1, $2, $3, $4, $5)`,
+                [
+                    id,
+                    detalle.producto_id,
+                    detalle.cantidad,
+                    detalle.costo_unitario,
+                    detalle.subtotal
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
+        transaccionIniciada = false;
+
+        return res.status(200).json({
+            message: 'Compra actualizada correctamente',
+            compra: actualizacion.rows[0]
+        });
+    } catch (error) {
+        if (client && transaccionIniciada) {
+            await client.query('ROLLBACK').catch(() => {});
+        }
+
+        if (
+            error.code === '23505' &&
+            error.constraint === 'uq_compras_comprobante'
+        ) {
+            return res.status(409).json({
+                message: 'Ya existe una compra con ese comprobante para este proveedor'
+            });
+        }
+
+        console.error('Error al editar la compra:', error);
+        next(error);
+    } finally {
+        if (client) {
+            client.release();
+        }
+    }
+};
+
 export const obtenerCompras = async (req, res, next) => {
     try {
         const result = await pool.query(
