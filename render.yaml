@@ -24,7 +24,7 @@ services:
         sync: false
       - key: DB_NAME
         sync: false
-      clea- key: DB_SSL
+      - key: DB_SSL
         value: "true"
 
   - type: web
