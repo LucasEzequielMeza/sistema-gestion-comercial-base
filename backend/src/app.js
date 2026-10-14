@@ -35,6 +35,11 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+// Compruebo que el servidor esté respondiendo
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ success: true, message: 'Servidor disponible' });
+});
+
 // Registro las rutas de la aplicación
 app.use('/api', autenticacionRoutes);
 app.use('/api/productos', productosRoutes);
