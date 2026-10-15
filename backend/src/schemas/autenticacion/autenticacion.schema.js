@@ -3,8 +3,8 @@ import { z } from 'zod';
 export const loginSchema = z.object({
     usuario: z.string()
         .trim()
-        .min(1, 'Ingresá tu nombre de usuario')
-        .max(50, 'El usuario es demasiado largo'),
+        .min(1, 'Ingresá tu usuario o correo electrónico')
+        .max(150, 'El usuario o correo es demasiado largo'),
     contrasena: z.string()
         .min(1, 'Ingresá tu contraseña')
         .max(128, 'La contraseña es demasiado larga')
@@ -33,3 +33,18 @@ export const registerSchema = z.object({
         .min(8, 'La contraseña debe tener al menos 8 caracteres')
         .max(128, 'La contraseña es demasiado larga')
 });
+
+export const cambiarContrasenaSchema = z.object({
+    contrasenaActual: z.string()
+        .min(1, 'Ingresá tu contraseña actual')
+        .max(128, 'La contraseña actual es demasiado larga'),
+    contrasenaNueva: z.string()
+        .min(8, 'La nueva contraseña debe tener al menos 8 caracteres')
+        .max(128, 'La nueva contraseña es demasiado larga')
+}).refine(
+    (datos) => datos.contrasenaActual !== datos.contrasenaNueva,
+    {
+        message: 'La nueva contraseña debe ser diferente de la actual',
+        path: ['contrasenaNueva']
+    }
+);

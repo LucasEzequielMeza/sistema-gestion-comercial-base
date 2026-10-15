@@ -13,6 +13,11 @@ import ventasRoutes from './modulos/ventas/ventas.routes.js';
 
 const app = express();
 
+// Reconozco el proxy de Render para obtener correctamente la IP del cliente.
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
+
 // Configuro qué frontend puede conectarse al backend
 const origenesPermitidos = (process.env.FRONTEND_URL || 'http://localhost:5173')
     .split(',')
