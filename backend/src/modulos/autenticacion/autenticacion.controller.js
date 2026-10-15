@@ -152,7 +152,12 @@ export const logout = (req, res) => {
 export const getProfile = async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT id, nombre, apellido, usuario, mail
+            `SELECT
+                id,
+                nombre,
+                apellido,
+                usuario,
+                mail
             FROM usuarios
             WHERE id = $1`,
             [req.userId]
@@ -178,3 +183,72 @@ export const getProfile = async (req, res) => {
         });
     }
 };
+
+export const cambiarContrasena = async (req, res) => {
+    const { contrasenaActual, contrasenaNueva } = req.body
+
+    if (
+        typeof contrasenaActual !== 'string' ||
+        typeof contrasenaNueva !== 'string' ||
+        !contrasenaActual ||
+        !contrasenaNueva
+    ) {
+        return res.status(400).json({
+            error: 'Completá la contraseña actual y la nueva contraseña.'
+        })
+    }
+
+    if (contrasenaNueva.length < 8) {
+        return res.status(400).json({
+            error: 'La nueva contraseña debe tener al menos 8 caracteres.'
+        })
+    }
+
+    if (contrasenaActual === contrasenaNueva) {
+        return res.status(400).json({
+            error: 'La nueva contraseña debe ser diferente de la actual.'
+        })
+    }
+
+    try {
+        const resultado = await pool.query(
+            'SELECT contrasena FROM usuarios WHERE id = $1',
+            [req.userId]
+        )
+
+        if (resultado.rowCount === 0) {
+            return res.status(404).json({
+                error: 'No se encontró el usuario.'
+            })
+        }
+
+        const contrasenaValida = await bcrypt.compare(
+            contrasenaActual,
+            resultado.rows[0].contrasena
+        )
+
+        if (!contrasenaValida) {
+            return res.status(400).json({
+                error: 'La contraseña actual es incorrecta.'
+            })
+        }
+
+        const hashContrasena = await bcrypt.hash(contrasenaNueva, 12)
+
+        await pool.query(
+            'UPDATE usuarios SET contrasena = $1 WHERE id = $2',
+            [hashContrasena, req.userId]
+        )
+
+        return res.status(200).json({
+            success: true,
+            message: 'La contraseña se cambió correctamente.'
+        })
+    } catch (error) {
+        console.error('Error al cambiar la contraseña:', error)
+
+        return res.status(500).json({
+            error: 'No se pudo cambiar la contraseña.'
+        })
+    }
+}

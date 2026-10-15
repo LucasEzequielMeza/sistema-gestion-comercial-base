@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import {login, register, logout, getProfile} from './autenticacion.controller.js';
+import {login, register, logout, getProfile, cambiarContrasena} from './autenticacion.controller.js';
 import { estaAutenticado } from '../../middleware/autenticacion.middleware.js';
 import { validateSchema } from '../../middleware/validacion.middleware.js';
 import {loginSchema, registerSchema} from '../../schemas/autenticacion/autenticacion.schema.js';
@@ -14,5 +14,7 @@ router.post('/register', validateSchema(registerSchema), register);
 router.post('/logout', estaAutenticado(), logout);
 
 router.get('/profile', estaAutenticado(), getProfile);
+
+router.patch('/profile/password', estaAutenticado(), cambiarContrasena)
 
 export default router;

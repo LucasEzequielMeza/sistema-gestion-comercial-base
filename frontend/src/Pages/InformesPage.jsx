@@ -697,7 +697,7 @@ function InformesPage() {
             <div>
                 <p className="text-sm font-medium text-stone-500">Administración</p>
                 <h1 className="mt-1 text-3xl font-bold tracking-tight text-stone-900">
-                    Informes y auditoría
+                    Informes
                 </h1>
                 <p className="mt-2 text-sm text-stone-600">
                     Consultá la información del negocio y descargá informes en PDF.

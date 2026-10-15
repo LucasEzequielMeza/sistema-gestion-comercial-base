@@ -23,16 +23,17 @@ import ProveedoresForm from './Components/proveedores/ProveedoresForm'
 import CategoriasPage from './Pages/CategoriasPage'
 import CategoriasForm from './Components/categorias/CategoriasForm'
 import InformesPage from './Pages/InformesPage'
+import PerfilPage from './Pages/PerfilPage'
 
 function App() {
-    const [menuAbierto, setMenuAbierto] = useState(true)
+    const [menuAbierto, setMenuAbierto] = useState(false)
     const location = useLocation()
     const esPaginaAutenticacion = location.pathname === '/iniciar-sesion' || location.pathname === '/registro'
 
     return (
         <>
             {!esPaginaAutenticacion && <Navbar menuAbierto={menuAbierto} setMenuAbierto={setMenuAbierto} />}
-            <main className={esPaginaAutenticacion ? 'min-h-screen bg-white' : `min-h-screen bg-white transition-all duration-300 ${menuAbierto ? 'pt-[330px] md:pt-0 md:ml-64' : 'pt-14 md:pt-0 md:ml-20'}`}>
+            <main className={esPaginaAutenticacion ? 'min-h-screen bg-white' : `min-h-dvh min-w-0 overflow-x-hidden bg-white pt-16 transition-all duration-300 md:pt-0 ${menuAbierto ? 'md:ml-64' : 'md:ml-20'}`}>
                 <Container>
                     <Routes>
                         {/* Autenticación */}
@@ -79,7 +80,10 @@ function App() {
 
                             {/* Informes y auditoría */}
                             <Route path="/informes" element={<InformesPage />} />
-                            
+
+                            {/* Perfil */}
+                            <Route path="/perfil" element={<PerfilPage />} />
+
                             {/* Ruta inexistente */}
                             <Route path="*" element={<Navigate to="/panel-de-control" replace />} />
                         </Route>
