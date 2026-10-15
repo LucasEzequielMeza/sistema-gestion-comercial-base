@@ -22,6 +22,7 @@ import ProveedoresPage from './Pages/ProveedoresPage'
 import ProveedoresForm from './Components/proveedores/ProveedoresForm'
 import CategoriasPage from './Pages/CategoriasPage'
 import CategoriasForm from './Components/categorias/CategoriasForm'
+import InformesPage from './Pages/InformesPage'
 
 function App() {
     const [menuAbierto, setMenuAbierto] = useState(true)
@@ -75,6 +76,9 @@ function App() {
                             {/* Categorías */}
                             <Route path="/categorias" element={<CategoriasPage />} />
                             <Route path="/categorias/nuevo" element={<CategoriasForm />} />
+
+                            {/* Informes y auditoría */}
+                            <Route path="/informes" element={<InformesPage />} />
                             
                             {/* Ruta inexistente */}
                             <Route path="*" element={<Navigate to="/panel-de-control" replace />} />

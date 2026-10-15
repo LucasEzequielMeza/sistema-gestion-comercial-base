@@ -1,4 +1,12 @@
-import { FaBoxOpen, FaBox, FaCashRegister, FaTachometerAlt, FaTruck, FaTags } from 'react-icons/fa'
+import {
+    FaBoxOpen,
+    FaBox,
+    FaCashRegister,
+    FaTachometerAlt,
+    FaTruck,
+    FaTags,
+    FaFileAlt
+} from 'react-icons/fa'
 import { MdInventory } from 'react-icons/md'
 
 export const privateRoutes = [
@@ -17,7 +25,7 @@ export const privateRoutes = [
         path: '/productos/inactivos',
         icon: FaBox
     },
-        {
+    {
         name: 'Categorías',
         path: '/categorias',
         icon: FaTags
@@ -38,8 +46,13 @@ export const privateRoutes = [
         icon: FaCashRegister
     },
     {
+        name: 'Informes',
+        path: '/informes',
+        icon: FaFileAlt
+    },
+    {
         name: 'Proveedores',
         path: '/proveedores',
         icon: FaTruck
-    },
+    }
 ]

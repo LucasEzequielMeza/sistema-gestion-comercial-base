@@ -493,3 +493,132 @@ export const actualizarStockMinimo = async (req, res) => {
         })
     }
 }
+
+export const obtenerInformeMovimientosStock = async (req, res, next) => {
+    const { desde, hasta, tipo, producto_id, usuario_id } = req.query;
+
+    try {
+        if (desde && hasta && desde > hasta) {
+            return res.status(400).json({
+                message: 'La fecha desde no puede ser posterior a la fecha hasta'
+            });
+        }
+
+        const condiciones = [];
+        const valores = [];
+
+        // Agrego los filtros solamente cuando fueron seleccionados.
+        if (desde) {
+            valores.push(desde);
+            condiciones.push(
+                `movimientos_stock.created_at >= $${valores.length}::date`
+            );
+        }
+
+        if (hasta) {
+            valores.push(hasta);
+            condiciones.push(
+                `movimientos_stock.created_at < ($${valores.length}::date + INTERVAL '1 day')`
+            );
+        }
+
+        if (tipo && ['entrada', 'salida', 'ajuste'].includes(tipo)) {
+            valores.push(tipo);
+            condiciones.push(
+                `movimientos_stock.tipo = $${valores.length}`
+            );
+        } else if (tipo) {
+            return res.status(400).json({
+                message: 'El tipo de movimiento seleccionado no es válido'
+            });
+        }
+
+        if (producto_id) {
+            valores.push(producto_id);
+            condiciones.push(
+                `movimientos_stock.producto_id = $${valores.length}`
+            );
+        }
+
+        if (usuario_id) {
+            valores.push(usuario_id);
+            condiciones.push(
+                `movimientos_stock.usuario_id = $${valores.length}`
+            );
+        }
+
+        const where = condiciones.length
+            ? `WHERE ${condiciones.join(' AND ')}`
+            : '';
+
+        const movimientosResult = await pool.query(
+            `SELECT
+                movimientos_stock.id,
+                movimientos_stock.producto_id,
+                productos.nombre AS producto_nombre,
+                productos.codigo AS producto_codigo,
+                movimientos_stock.tipo,
+                movimientos_stock.cantidad,
+                movimientos_stock.motivo,
+                movimientos_stock.stock_anterior,
+                movimientos_stock.stock_nuevo,
+                movimientos_stock.usuario_id,
+                usuarios.nombre AS usuario_nombre,
+                usuarios.apellido AS usuario_apellido,
+                movimientos_stock.created_at
+            FROM movimientos_stock
+            INNER JOIN productos
+                ON productos.id = movimientos_stock.producto_id
+            LEFT JOIN usuarios
+                ON usuarios.id = movimientos_stock.usuario_id
+            ${where}
+            ORDER BY movimientos_stock.created_at DESC`,
+            valores
+        );
+
+        const movimientos = movimientosResult.rows;
+
+        const resumen = movimientos.reduce(
+            (acumulado, movimiento) => {
+                const cantidad = Number(movimiento.cantidad);
+
+                acumulado.total_movimientos += 1;
+
+                if (movimiento.tipo === 'entrada') {
+                    acumulado.cantidad_entradas += 1;
+                    acumulado.unidades_entradas += cantidad;
+                } else if (movimiento.tipo === 'salida') {
+                    acumulado.cantidad_salidas += 1;
+                    acumulado.unidades_salidas += cantidad;
+                } else if (movimiento.tipo === 'ajuste') {
+                    acumulado.cantidad_ajustes += 1;
+                }
+
+                return acumulado;
+            },
+            {
+                total_movimientos: 0,
+                cantidad_entradas: 0,
+                unidades_entradas: 0,
+                cantidad_salidas: 0,
+                unidades_salidas: 0,
+                cantidad_ajustes: 0
+            }
+        );
+
+        res.status(200).json({
+            filtros: {
+                desde: desde || null,
+                hasta: hasta || null,
+                tipo: tipo || null,
+                producto_id: producto_id || null,
+                usuario_id: usuario_id || null
+            },
+            resumen,
+            movimientos
+        });
+    } catch (error) {
+        console.error('Error al generar el informe de movimientos de stock:', error);
+        next(error);
+    }
+};

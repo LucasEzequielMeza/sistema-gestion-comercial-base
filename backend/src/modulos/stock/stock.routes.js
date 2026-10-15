@@ -7,7 +7,8 @@ import {
     disminuirStock,
     obtenerProductosConStockBajo,
     ajustarStock,
-    actualizarStockMinimo
+    actualizarStockMinimo,
+    obtenerInformeMovimientosStock
 } from './stock.controller.js';
 
 import { estaAutenticado } from '../../middleware/autenticacion.middleware.js';
@@ -17,6 +18,8 @@ const router = Router();
 router.get('/', estaAutenticado(), obtenerStock);
 
 router.get('/bajo', estaAutenticado(), obtenerProductosConStockBajo);
+
+router.get('/informe', estaAutenticado(), obtenerInformeMovimientosStock);
 
 router.patch('/minimo/:id', estaAutenticado(), actualizarStockMinimo)
 

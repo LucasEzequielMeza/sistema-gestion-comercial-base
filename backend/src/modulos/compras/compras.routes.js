@@ -6,7 +6,8 @@ import {
     obtenerCompras,
     obtenerCompraPorId,
     confirmarCompra,
-    cancelarCompra
+    cancelarCompra,
+    obtenerInformeCompras
 } from './compras.controller.js';
 
 import { estaAutenticado } from '../../middleware/autenticacion.middleware.js';
@@ -16,6 +17,8 @@ const router = Router();
 router.post('/', estaAutenticado(), crearCompra);
 
 router.get('/', estaAutenticado(), obtenerCompras);
+
+router.get('/informe', estaAutenticado(), obtenerInformeCompras);
 
 router.put('/:id', estaAutenticado(), editarCompra);
 

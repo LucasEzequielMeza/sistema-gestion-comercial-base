@@ -523,3 +523,148 @@ export const anularVenta = async (req, res, next) => {
         }
     }
 };
+
+
+export const obtenerInformeVentas = async (req, res, next) => {
+    try {
+        const { desde, hasta, estado, usuario_id } = req.query;
+
+        const condiciones = [];
+        const parametros = [];
+
+        if (desde && !/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
+            return res.status(400).json({
+                message: 'La fecha inicial no es válida'
+            });
+        }
+
+        if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+            return res.status(400).json({
+                message: 'La fecha final no es válida'
+            });
+        }
+
+        if (desde && hasta && desde > hasta) {
+            return res.status(400).json({
+                message: 'La fecha inicial no puede ser posterior a la fecha final'
+            });
+        }
+
+        if (desde) {
+            parametros.push(desde);
+            condiciones.push(
+                `ventas.created_at >= $${parametros.length}::date`
+            );
+        }
+
+        if (hasta) {
+            parametros.push(hasta);
+            condiciones.push(
+                `ventas.created_at < ($${parametros.length}::date + INTERVAL '1 day')`
+            );
+        }
+
+        if (estado) {
+            if (!['completada', 'anulada'].includes(estado)) {
+                return res.status(400).json({
+                    message: 'El estado seleccionado no es válido'
+                });
+            }
+
+            parametros.push(estado);
+            condiciones.push(
+                `ventas.estado = $${parametros.length}`
+            );
+        }
+
+        if (usuario_id) {
+            parametros.push(usuario_id);
+            condiciones.push(
+                `ventas.usuario_id = $${parametros.length}`
+            );
+        }
+
+        const where = condiciones.length
+            ? `WHERE ${condiciones.join(' AND ')}`
+            : '';
+
+        const resultado = await pool.query(
+            `SELECT
+                ventas.id,
+                ventas.numero_venta,
+                ventas.total,
+                ventas.estado,
+                ventas.created_at,
+                usuarios.nombre AS usuario_nombre,
+                usuarios.apellido AS usuario_apellido,
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'producto_nombre', detalle_ventas.producto_nombre,
+                                'producto_codigo', detalle_ventas.producto_codigo,
+                                'cantidad', detalle_ventas.cantidad,
+                                'precio_unitario', detalle_ventas.precio_unitario,
+                                'subtotal', detalle_ventas.subtotal
+                            )
+                            ORDER BY detalle_ventas.created_at
+                        )
+                        FROM detalle_ventas
+                        WHERE detalle_ventas.venta_id = ventas.id
+                    ),
+                    '[]'::json
+                ) AS detalles,
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'metodo_pago', pagos_venta.metodo_pago,
+                                'monto', pagos_venta.monto
+                            )
+                            ORDER BY pagos_venta.created_at
+                        )
+                        FROM pagos_venta
+                        WHERE pagos_venta.venta_id = ventas.id
+                    ),
+                    '[]'::json
+                ) AS pagos
+            FROM ventas
+            INNER JOIN usuarios
+                ON usuarios.id = ventas.usuario_id
+            ${where}
+            ORDER BY ventas.created_at DESC, ventas.numero_venta DESC`,
+            parametros
+        );
+
+        const ventas = resultado.rows;
+
+        const ventasCompletadas = ventas.filter(
+            venta => venta.estado === 'completada'
+        );
+
+        const ventasAnuladas = ventas.filter(
+            venta => venta.estado === 'anulada'
+        );
+
+        const sumarTotales = lista =>
+            lista.reduce(
+                (total, venta) => total + Math.round(Number(venta.total) * 100),
+                0
+            ) / 100;
+
+        return res.status(200).json({
+            filtros: { desde: desde || null, hasta: hasta || null, estado: estado || null, usuario_id: usuario_id || null },
+            resumen: {
+                cantidad_ventas: ventas.length,
+                cantidad_completadas: ventasCompletadas.length,
+                cantidad_anuladas: ventasAnuladas.length,
+                total_completadas: sumarTotales(ventasCompletadas),
+                total_anuladas: sumarTotales(ventasAnuladas)
+            },
+            ventas
+        });
+    } catch (error) {
+        console.error('Error al generar el informe de ventas:', error);
+        next(error);
+    }
+};

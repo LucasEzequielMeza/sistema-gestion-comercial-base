@@ -605,3 +605,141 @@ export const cancelarCompra = async (req, res, next) => {
         next(error);
     }
 };
+
+
+export const obtenerInformeCompras = async (req, res, next) => {
+    const { desde, hasta, estado, proveedor_id } = req.query;
+
+    try {
+        const condiciones = [];
+        const parametros = [];
+
+        if (desde) {
+            parametros.push(desde);
+            condiciones.push(`compras.fecha >= $${parametros.length}::date`);
+        }
+
+        if (hasta) {
+            parametros.push(hasta);
+            condiciones.push(`compras.fecha < ($${parametros.length}::date + INTERVAL '1 day')`);
+        }
+
+        if (estado) {
+            const estadosValidos = ['pendiente', 'confirmada', 'cancelada'];
+
+            if (!estadosValidos.includes(estado)) {
+                return res.status(400).json({
+                    message: 'El estado seleccionado no es válido'
+                });
+            }
+
+            parametros.push(estado);
+            condiciones.push(`compras.estado = $${parametros.length}`);
+        }
+
+        if (proveedor_id) {
+            parametros.push(proveedor_id);
+            condiciones.push(`compras.proveedor_id = $${parametros.length}`);
+        }
+
+        const where = condiciones.length > 0
+            ? `WHERE ${condiciones.join(' AND ')}`
+            : '';
+
+        const comprasResult = await pool.query(
+            `SELECT
+                compras.id,
+                compras.fecha,
+                compras.proveedor_id,
+                compras.usuario_id,
+                compras.tipo_comprobante,
+                compras.numero_comprobante,
+                compras.total,
+                compras.estado,
+                compras.observaciones,
+                proveedores.nombre AS proveedor_nombre,
+                usuarios.nombre AS usuario_nombre,
+                usuarios.apellido AS usuario_apellido,
+                COALESCE(
+                    JSON_AGG(
+                        JSON_BUILD_OBJECT(
+                            'producto_id', detalle_compras.producto_id,
+                            'producto_nombre', productos.nombre,
+                            'producto_codigo', productos.codigo,
+                            'cantidad', detalle_compras.cantidad,
+                            'costo_unitario', detalle_compras.costo_unitario,
+                            'subtotal', detalle_compras.subtotal
+                        )
+                        ORDER BY productos.nombre
+                    ) FILTER (WHERE detalle_compras.id IS NOT NULL),
+                    '[]'::json
+                ) AS detalles
+            FROM compras
+            INNER JOIN proveedores
+                ON proveedores.id = compras.proveedor_id
+            INNER JOIN usuarios
+                ON usuarios.id = compras.usuario_id
+            LEFT JOIN detalle_compras
+                ON detalle_compras.compra_id = compras.id
+            LEFT JOIN productos
+                ON productos.id = detalle_compras.producto_id
+            ${where}
+            GROUP BY
+                compras.id,
+                proveedores.nombre,
+                usuarios.nombre,
+                usuarios.apellido
+            ORDER BY compras.fecha DESC, compras.id DESC`,
+            parametros
+        );
+
+        const resumenResult = await pool.query(
+            `SELECT
+                COUNT(*)::int AS cantidad_total,
+                COALESCE(SUM(compras.total), 0) AS importe_total,
+                COUNT(*) FILTER (
+                    WHERE compras.estado = 'pendiente'
+                )::int AS cantidad_pendientes,
+                COALESCE(SUM(compras.total) FILTER (
+                    WHERE compras.estado = 'pendiente'
+                ), 0) AS importe_pendiente,
+                COUNT(*) FILTER (
+                    WHERE compras.estado = 'confirmada'
+                )::int AS cantidad_confirmadas,
+                COALESCE(SUM(compras.total) FILTER (
+                    WHERE compras.estado = 'confirmada'
+                ), 0) AS importe_confirmado,
+                COUNT(*) FILTER (
+                    WHERE compras.estado = 'cancelada'
+                )::int AS cantidad_canceladas,
+                COALESCE(SUM(compras.total) FILTER (
+                    WHERE compras.estado = 'cancelada'
+                ), 0) AS importe_cancelado
+            FROM compras
+            ${where}`,
+            parametros
+        );
+
+        const proveedoresResult = await pool.query(
+            `SELECT id, nombre
+            FROM proveedores
+            WHERE activo = true
+            ORDER BY nombre ASC`
+        );
+
+        return res.status(200).json({
+            filtros: {
+                desde: desde || null,
+                hasta: hasta || null,
+                estado: estado || null,
+                proveedor_id: proveedor_id || null
+            },
+            resumen: resumenResult.rows[0],
+            compras: comprasResult.rows,
+            proveedores: proveedoresResult.rows
+        });
+    } catch (error) {
+        console.error('Error al generar el informe de compras:', error);
+        next(error);
+    }
+};
