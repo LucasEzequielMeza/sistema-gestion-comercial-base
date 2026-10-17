@@ -18,14 +18,16 @@ if (process.env.NODE_ENV === 'production') {
     app.set('trust proxy', 1);
 }
 
-// Configuro qué frontend puede conectarse al backend
-const origenesPermitidos = (process.env.FRONTEND_URL || 'http://localhost:5173')
+// Configuro qué frontend puede conectarse al backend.
+const origenesPermitidos = (
+    process.env.FRONTEND_URL || 'http://localhost:5173'
+)
     .split(',')
     .map((origen) => origen.trim());
 
 app.use(cors({
     origin: (origen, callback) => {
-        // Permito solicitudes sin origen, como algunas herramientas de prueba
+        // Permito solicitudes sin origen, como algunas herramientas de prueba.
         if (!origen || origenesPermitidos.includes(origen)) {
             return callback(null, true);
         }
@@ -40,12 +42,15 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '4mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Compruebo que el servidor esté respondiendo
+// Compruebo que el servidor esté respondiendo.
 app.get('/api/health', (req, res) => {
-    res.status(200).json({ success: true, message: 'Servidor disponible' });
+    res.status(200).json({
+        success: true,
+        message: 'Servidor disponible'
+    });
 });
 
-// Registro las rutas de la aplicación
+// Registro las rutas de la aplicación.
 app.use('/api', autenticacionRoutes);
 app.use('/api/productos', productosRoutes);
 app.use('/api/stock', stockRoutes);
@@ -55,7 +60,7 @@ app.use('/api/proveedores', proveedoresRoutes);
 app.use('/api/compras', comprasRoutes);
 app.use('/api/ventas', ventasRoutes);
 
-// Respondo cuando la ruta solicitada no existe
+// Respondo cuando la ruta solicitada no existe.
 app.use((req, res) => {
     res.status(404).json({
         success: false,
@@ -63,7 +68,7 @@ app.use((req, res) => {
     });
 });
 
-// Manejo los errores sin exponer detalles internos
+// Manejo los errores sin exponer detalles internos.
 app.use((err, req, res, next) => {
     console.error('Error en la solicitud:', err.message);
 
@@ -72,6 +77,18 @@ app.use((err, req, res, next) => {
     }
 
     const esErrorCors = err.message === 'Origen no permitido por CORS';
+
+    const esJsonInvalido =
+        err instanceof SyntaxError &&
+        err.status === 400 &&
+        err.type === 'entity.parse.failed';
+
+    if (esJsonInvalido) {
+        return res.status(400).json({
+            success: false,
+            message: 'El formato JSON enviado no es válido'
+        });
+    }
 
     res.status(esErrorCors ? 403 : 500).json({
         success: false,

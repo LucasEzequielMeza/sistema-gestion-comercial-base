@@ -2,28 +2,30 @@ import bcrypt from 'bcrypt';
 import { pool } from '../../db.js';
 import { generarTokenDeAcceso } from './jwt.js';
 
-const opcionesCookie = {
+const opcionesCookieBase = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 24 * 60 * 60 * 1000,
     path: '/'
+};
+
+const opcionesCookie = {
+    ...opcionesCookieBase,
+    maxAge: 24 * 60 * 60 * 1000
 };
 
 export const login = async (req, res) => {
     try {
         const { usuario, contrasena } = req.body;
 
-        // Busco el usuario por su nombre de usuario
         const result = await pool.query(
-            `SELECT id, usuario, contrasena
+            `SELECT id, comercio_id, nombre, apellido, usuario, mail, contrasena
             FROM usuarios
             WHERE usuario = $1 OR LOWER(mail) = LOWER($1)
             LIMIT 1`,
             [usuario]
         );
 
-        // Uso el mismo mensaje para no revelar si el usuario existe
         if (result.rowCount === 0) {
             return res.status(401).json({
                 success: false,
@@ -33,7 +35,6 @@ export const login = async (req, res) => {
 
         const usuarioEncontrado = result.rows[0];
 
-        // Comparo la contraseña con el hash guardado
         const contrasenaValida = await bcrypt.compare(
             contrasena,
             usuarioEncontrado.contrasena
@@ -46,9 +47,16 @@ export const login = async (req, res) => {
             });
         }
 
-        // Creo el token para identificar la sesión
+        if (!usuarioEncontrado.comercio_id) {
+            return res.status(403).json({
+                success: false,
+                error: 'La cuenta no tiene un comercio asignado. Contactá al administrador.'
+            });
+        }
+
         const token = await generarTokenDeAcceso({
-            id: usuarioEncontrado.id
+            id: usuarioEncontrado.id,
+            comercioId: usuarioEncontrado.comercio_id
         });
 
         res.cookie('token', token, opcionesCookie);
@@ -57,11 +65,16 @@ export const login = async (req, res) => {
             success: true,
             usuario: {
                 id: usuarioEncontrado.id,
-                usuario: usuarioEncontrado.usuario
+                comercio_id: usuarioEncontrado.comercio_id,
+                nombre: usuarioEncontrado.nombre,
+                apellido: usuarioEncontrado.apellido,
+                usuario: usuarioEncontrado.usuario,
+                mail: usuarioEncontrado.mail
             }
         });
     } catch (error) {
         console.error('Error al iniciar sesión:', error.message);
+
         return res.status(500).json({
             success: false,
             error: 'Error interno del servidor'
@@ -70,56 +83,74 @@ export const login = async (req, res) => {
 };
 
 export const register = async (req, res) => {
+    let conexion;
+
     try {
+        conexion = await pool.connect();
+
         const { nombre, apellido, usuario, mail, contrasena } = req.body;
 
-        // Compruebo si el usuario o el correo ya están registrados
-        const existeUsuario = await pool.query(
-            `SELECT id
-            FROM usuarios
-            WHERE usuario = $1 OR LOWER(mail) = LOWER($2)
-            LIMIT 1`,
-            [usuario, mail]
-        );
+        await conexion.query('BEGIN');
 
-        if (existeUsuario.rowCount > 0) {
-            return res.status(409).json({
-                success: false,
-                error: 'El nombre de usuario o el correo ya están registrados'
-            });
-        }
-
-        // Encripto la contraseña antes de guardarla
         const hashContrasena = await bcrypt.hash(contrasena, 12);
 
-        // Guardo el usuario y devuelvo solo los datos necesarios
-        const result = await pool.query(
+        // Creo un comercio nuevo para la cuenta que se está registrando.
+        const resultadoComercio = await conexion.query(
+            `INSERT INTO comercios (nombre)
+            VALUES ($1)
+            RETURNING id, nombre`,
+            [`Comercio de ${nombre} ${apellido}`]
+        );
+
+        const nuevoComercio = resultadoComercio.rows[0];
+
+        const resultadoUsuario = await conexion.query(
             `INSERT INTO usuarios (
+                comercio_id,
                 nombre,
                 apellido,
                 usuario,
                 mail,
                 contrasena
             )
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, nombre, apellido, usuario, mail`,
-            [nombre, apellido, usuario, mail.toLowerCase(), hashContrasena]
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, comercio_id, nombre, apellido, usuario, mail`,
+            [
+                nuevoComercio.id,
+                nombre,
+                apellido,
+                usuario,
+                mail.toLowerCase(),
+                hashContrasena
+            ]
         );
 
-        const nuevoUsuario = result.rows[0];
+        const nuevoUsuario = resultadoUsuario.rows[0];
 
+        // Genero el token antes de confirmar la transacción.
         const token = await generarTokenDeAcceso({
-            id: nuevoUsuario.id
+            id: nuevoUsuario.id,
+            comercioId: nuevoUsuario.comercio_id
         });
+
+        await conexion.query('COMMIT');
 
         res.cookie('token', token, opcionesCookie);
 
         return res.status(201).json({
             success: true,
-            usuario: nuevoUsuario
+            usuario: nuevoUsuario,
+            comercio: nuevoComercio
         });
     } catch (error) {
-        // PostgreSQL usa 23505 cuando se viola una restricción UNIQUE
+        if (conexion) {
+            try {
+                await conexion.query('ROLLBACK');
+            } catch (errorRollback) {
+                console.error('Error al revertir el registro:', errorRollback.message);
+            }
+        }
+
         if (error.code === '23505') {
             return res.status(409).json({
                 success: false,
@@ -131,18 +162,17 @@ export const register = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            error: 'Error interno del servidor'
+            error: 'No se pudo registrar la cuenta'
         });
+    } finally {
+        if (conexion) {
+            conexion.release();
+        }
     }
 };
 
 export const logout = (req, res) => {
-    res.clearCookie('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        path: '/'
-    });
+    res.clearCookie('token', opcionesCookieBase);
 
     return res.status(200).json({
         success: true,
@@ -154,14 +184,19 @@ export const getProfile = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT
-                id,
-                nombre,
-                apellido,
-                usuario,
-                mail
+                usuarios.id,
+                usuarios.comercio_id,
+                usuarios.nombre,
+                usuarios.apellido,
+                usuarios.usuario,
+                usuarios.mail,
+                comercios.nombre AS comercio_nombre
             FROM usuarios
-            WHERE id = $1`,
-            [req.userId]
+            INNER JOIN comercios
+                ON comercios.id = usuarios.comercio_id
+            WHERE usuarios.id = $1
+              AND usuarios.comercio_id = $2`,
+            [req.userId, req.comercioId]
         );
 
         if (result.rowCount === 0) {
@@ -192,8 +227,9 @@ export const cambiarContrasena = async (req, res) => {
         const resultado = await pool.query(
             `SELECT contrasena
             FROM usuarios
-            WHERE id = $1`,
-            [req.userId]
+            WHERE id = $1
+              AND comercio_id = $2`,
+            [req.userId, req.comercioId]
         );
 
         if (resultado.rowCount === 0) {
@@ -220,13 +256,16 @@ export const cambiarContrasena = async (req, res) => {
         await pool.query(
             `UPDATE usuarios
             SET contrasena = $1
-            WHERE id = $2`,
-            [hashContrasena, req.userId]
+            WHERE id = $2
+              AND comercio_id = $3`,
+            [hashContrasena, req.userId, req.comercioId]
         );
+
+        res.clearCookie('token', opcionesCookieBase);
 
         return res.status(200).json({
             success: true,
-            message: 'La contraseña se cambió correctamente'
+            message: 'La contraseña se cambió correctamente. Iniciá sesión nuevamente.'
         });
     } catch (error) {
         console.error('Error al cambiar la contraseña:', error.message);

@@ -5,12 +5,10 @@ dotenv.config();
 
 const SECRET = process.env.JWT_SECRET;
 
-// Compruebo que exista una clave suficientemente larga
 if (!SECRET || Buffer.byteLength(SECRET, 'utf8') < 32) {
     throw new Error('JWT_SECRET debe tener al menos 32 bytes');
 }
 
-// Genero el token de acceso con una duración de un día
 export const generarTokenDeAcceso = (payload) => {
     return new Promise((resolve, reject) => {
         jwt.sign(

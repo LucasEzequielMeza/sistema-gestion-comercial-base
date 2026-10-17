@@ -24,12 +24,18 @@ if (variablesFaltantes.length > 0) {
     );
 }
 
-const requiereSSL = process.env.DB_SSL === 'true';
+const puerto = Number(process.env.DB_PORT);
+
+if (!Number.isInteger(puerto) || puerto < 1 || puerto > 65535) {
+    throw new Error('DB_PORT debe ser un puerto válido entre 1 y 65535');
+}
+
+const requiereSSL = process.env.DB_SSL?.toLowerCase() === 'true';
 
 // Configuro el pool para reutilizar conexiones a PostgreSQL.
 export const pool = new Pool({
     host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT),
+    port: puerto,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
@@ -42,5 +48,5 @@ export const pool = new Pool({
 
 // Aviso si una conexión del pool falla inesperadamente.
 pool.on('error', (error) => {
-    console.error('Error inesperado en el pool de PostgreSQL:', error.message)
+    console.error('Error inesperado en el pool de PostgreSQL:', error.message);
 });

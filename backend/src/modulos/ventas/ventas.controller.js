@@ -1,35 +1,106 @@
 import { pool } from '../../db.js';
-import { crearVentaSchema } from '../../schemas/ventas/ventas.schema.js';
 
-export const crearVenta = async (req, res, next) => {
-    const validacion = crearVentaSchema.safeParse(req.body);
+const MAX_TOTAL_CENTAVOS = 999_999_999_999n;
 
-    if (!validacion.success) {
-        return res.status(400).json({
-            message: 'Los datos de la venta no son válidos',
-            errores: validacion.error.issues
-        });
+const crearError = (mensaje, status = 400) => {
+    const error = new Error(mensaje);
+    error.status = status;
+    return error;
+};
+
+const centavosDesdeDecimal = (valor) => {
+    const texto = String(valor);
+    const coincidencia = texto.match(/^(-?)(\d+)(?:\.(\d{1,2}))?$/);
+
+    if (!coincidencia) {
+        throw crearError('Se encontró un importe con un formato inválido');
     }
 
-    const { detalles, pagos } = validacion.data;
+    const signo = coincidencia[1] === '-' ? -1n : 1n;
+    const enteros = BigInt(coincidencia[2]);
+    const decimales = BigInt((coincidencia[3] || '').padEnd(2, '0'));
+
+    return signo * (enteros * 100n + decimales);
+};
+
+const milesimasDesdeDecimal = (valor) => {
+    const texto = String(valor);
+    const coincidencia = texto.match(/^(-?)(\d+)(?:\.(\d{1,3}))?$/);
+
+    if (!coincidencia) {
+        throw crearError('Se encontró una cantidad con un formato inválido');
+    }
+
+    const signo = coincidencia[1] === '-' ? -1n : 1n;
+    const enteros = BigInt(coincidencia[2]);
+    const decimales = BigInt((coincidencia[3] || '').padEnd(3, '0'));
+
+    return signo * (enteros * 1000n + decimales);
+};
+
+const decimalDesdeCentavos = (centavos) => {
+    const signo = centavos < 0n ? '-' : '';
+    const importeAbsoluto = centavos < 0n ? -centavos : centavos;
+
+    return `${signo}${importeAbsoluto / 100n}.${String(importeAbsoluto % 100n).padStart(2, '0')}`;
+};
+
+const decimalDesdeMilesimas = (milesimas) => {
+    const signo = milesimas < 0n ? '-' : '';
+    const cantidadAbsoluta = milesimas < 0n ? -milesimas : milesimas;
+
+    return `${signo}${cantidadAbsoluta / 1000n}.${String(cantidadAbsoluta % 1000n).padStart(3, '0')}`;
+};
+
+const numeroDesdeCentavos = (centavos) => Number(centavos) / 100;
+
+const validarTotalVenta = (totalCentavos) => {
+    if (totalCentavos <= 0n || totalCentavos > MAX_TOTAL_CENTAVOS) {
+        throw crearError('El total de la venta supera el rango permitido');
+    }
+};
+
+const responderError = (res, error) => {
+    return res.status(error.status).json({
+        success: false,
+        message: error.message
+    });
+};
+
+export const crearVenta = async (req, res, next) => {
+    const { detalles, pagos } = req.body;
 
     let client;
     let transaccionIniciada = false;
 
     try {
+        if (!req.comercioId || !req.userId) {
+            return res.status(401).json({
+                success: false,
+                message: 'La sesión no tiene un comercio o usuario asignado'
+            });
+        }
+
+        if (!Array.isArray(detalles) || detalles.length === 0 || !Array.isArray(pagos) || pagos.length === 0) {
+            throw crearError('La venta debe incluir productos y al menos un pago');
+        }
+
         client = await pool.connect();
 
         await client.query('BEGIN');
         transaccionIniciada = true;
 
-        // Bloqueo los productos en un orden fijo para evitar conflictos entre ventas simultáneas.
         const detallesOrdenados = [...detalles].sort((a, b) =>
-            a.producto_id.localeCompare(b.producto_id)
+            String(a.producto_id).localeCompare(String(b.producto_id))
         );
 
         const productosVenta = new Map();
 
         for (const detalle of detallesOrdenados) {
+            if (!detalle.producto_id) {
+                throw crearError('Todos los productos deben tener un identificador válido');
+            }
+
             const productoResult = await client.query(
                 `SELECT
                     productos.id,
@@ -40,98 +111,111 @@ export const crearVenta = async (req, res, next) => {
                     productos.activo
                 FROM productos
                 WHERE productos.id = $1
+                  AND productos.comercio_id = $2
                 FOR UPDATE`,
-                [detalle.producto_id]
+                [detalle.producto_id, req.comercioId]
             );
 
-            if (productoResult.rows.length === 0) {
-                const error = new Error('Uno de los productos no existe');
-                error.status = 404;
-                throw error;
+            if (productoResult.rowCount === 0) {
+                throw crearError('Uno de los productos no existe en tu comercio', 404);
             }
 
             const producto = productoResult.rows[0];
 
             if (!producto.activo) {
-                const error = new Error(
-                    `El producto ${producto.nombre} está inactivo`
-                );
-                error.status = 400;
-                throw error;
+                throw crearError(`El producto ${producto.nombre} está inactivo`);
             }
 
-            const cantidad = Number(detalle.cantidad);
-            const stockAnterior = Number(producto.stock);
+            const cantidadMilesimas = milesimasDesdeDecimal(detalle.cantidad);
+            const stockAnteriorMilesimas = milesimasDesdeDecimal(producto.stock);
+            const precioCentavos = centavosDesdeDecimal(producto.precio_venta);
 
-            if (stockAnterior < cantidad) {
-                const error = new Error(
-                    `Stock insuficiente para ${producto.nombre}. Disponible: ${stockAnterior}`
-                );
-                error.status = 400;
-                throw error;
+            if (cantidadMilesimas <= 0n) {
+                throw crearError('La cantidad debe ser mayor a cero');
             }
 
-            const precioUnitario = Number(producto.precio_venta);
-
-            if (!Number.isFinite(precioUnitario) || precioUnitario < 0) {
-                const error = new Error(
-                    `El precio del producto ${producto.nombre} no es válido`
+            if (stockAnteriorMilesimas < cantidadMilesimas) {
+                throw crearError(
+                    `Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}`
                 );
-                error.status = 400;
-                throw error;
             }
 
-            const subtotal = Number((cantidad * precioUnitario).toFixed(2));
+            if (precioCentavos < 0n) {
+                throw crearError(`El precio del producto ${producto.nombre} no es válido`);
+            }
+
+            if (productosVenta.has(detalle.producto_id)) {
+                throw crearError('No se puede repetir un producto en el detalle de la venta');
+            }
+
+            const subtotalCentavos =
+                (cantidadMilesimas * precioCentavos + 500n) / 1000n;
+
+            const stockNuevoMilesimas =
+                stockAnteriorMilesimas - cantidadMilesimas;
 
             productosVenta.set(detalle.producto_id, {
-                ...producto,
-                cantidad,
-                stockAnterior,
-                stockNuevo: Number((stockAnterior - cantidad).toFixed(3)),
-                precioUnitario,
-                subtotal
+                producto_id: producto.id,
+                nombre: producto.nombre,
+                codigo: producto.codigo,
+                cantidadMilesimas,
+                stockAnteriorMilesimas,
+                stockNuevoMilesimas,
+                precioCentavos,
+                subtotalCentavos
             });
         }
 
-        // Calculo el total usando los precios guardados en la base de datos.
-        const detallesCalculados = detalles.map((detalle) => ({
-            ...productosVenta.get(detalle.producto_id),
-            producto_id: detalle.producto_id
-        }));
+        const detallesCalculados = detalles.map((detalle) => {
+            const producto = productosVenta.get(detalle.producto_id);
+
+            if (!producto) {
+                throw crearError('No se pudo validar uno de los productos de la venta');
+            }
+
+            return {
+                ...producto,
+                cantidadReal: Number(producto.cantidadMilesimas) / 1000,
+                precioUnitario: numeroDesdeCentavos(producto.precioCentavos),
+                subtotal: numeroDesdeCentavos(producto.subtotalCentavos)
+            };
+        });
 
         const totalCentavos = detallesCalculados.reduce(
-            (acumulado, detalle) =>
-                acumulado + Math.round(detalle.subtotal * 100),
-            0
+            (acumulado, detalle) => acumulado + detalle.subtotalCentavos,
+            0n
         );
 
-        const pagosCentavos = pagos.reduce(
-            (acumulado, pago) =>
-                acumulado + Math.round(Number(pago.monto) * 100),
-            0
-        );
+        validarTotalVenta(totalCentavos);
+
+        const pagosCentavos = pagos.reduce((acumulado, pago) => {
+            const montoCentavos = centavosDesdeDecimal(pago.monto);
+
+            if (montoCentavos <= 0n) {
+                throw crearError('Cada pago debe tener un importe mayor a cero');
+            }
+
+            if (typeof pago.metodo_pago !== 'string' || !pago.metodo_pago.trim()) {
+                throw crearError('Todos los pagos deben indicar un método de pago');
+            }
+
+            return acumulado + montoCentavos;
+        }, 0n);
 
         if (pagosCentavos !== totalCentavos) {
-            const error = new Error(
-                'La suma de los pagos debe coincidir con el total de la venta'
-            );
-            error.status = 400;
-            throw error;
+            throw crearError('La suma de los pagos debe coincidir con el total de la venta');
         }
 
-        const total = totalCentavos / 100;
-
         const ventaResult = await client.query(
-            `INSERT INTO ventas (usuario_id, total, estado)
-            VALUES ($1, $2, 'completada')
+            `INSERT INTO ventas (comercio_id, usuario_id, total, estado)
+            VALUES ($1, $2, $3, 'completada')
             RETURNING id, numero_venta, usuario_id, total, estado, created_at`,
-            [req.userId, total]
+            [req.comercioId, req.userId, decimalDesdeCentavos(totalCentavos)]
         );
 
         const venta = ventaResult.rows[0];
 
         for (const detalle of detallesCalculados) {
-            // Guardo los datos del producto tal como estaban al momento de la venta.
             await client.query(
                 `INSERT INTO detalle_ventas (
                     venta_id,
@@ -148,25 +232,35 @@ export const crearVenta = async (req, res, next) => {
                     detalle.producto_id,
                     detalle.nombre,
                     detalle.codigo,
-                    detalle.cantidad,
-                    detalle.precioUnitario,
-                    detalle.subtotal
+                    decimalDesdeMilesimas(detalle.cantidadMilesimas),
+                    decimalDesdeCentavos(detalle.precioCentavos),
+                    decimalDesdeCentavos(detalle.subtotalCentavos)
                 ]
             );
         }
 
         for (const detalle of detallesCalculados) {
-            // Descuento el stock y registro la salida en el historial.
-            await client.query(
+            const actualizacion = await client.query(
                 `UPDATE productos
                 SET stock = $1,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = $2`,
-                [detalle.stockNuevo, detalle.producto_id]
+                WHERE id = $2
+                  AND comercio_id = $3
+                RETURNING id`,
+                [
+                    decimalDesdeMilesimas(detalle.stockNuevoMilesimas),
+                    detalle.producto_id,
+                    req.comercioId
+                ]
             );
+
+            if (actualizacion.rowCount === 0) {
+                throw crearError('No se pudo actualizar el stock de uno de los productos', 409);
+            }
 
             await client.query(
                 `INSERT INTO movimientos_stock (
+                    comercio_id,
                     producto_id,
                     tipo,
                     cantidad,
@@ -175,13 +269,14 @@ export const crearVenta = async (req, res, next) => {
                     stock_nuevo,
                     usuario_id
                 )
-                VALUES ($1, 'salida', $2, $3, $4, $5, $6)`,
+                VALUES ($1, $2, 'salida', $3, $4, $5, $6, $7)`,
                 [
+                    req.comercioId,
                     detalle.producto_id,
-                    detalle.cantidad,
+                    decimalDesdeMilesimas(detalle.cantidadMilesimas),
                     `Venta N.º ${venta.numero_venta}`,
-                    detalle.stockAnterior,
-                    detalle.stockNuevo,
+                    decimalDesdeMilesimas(detalle.stockAnteriorMilesimas),
+                    decimalDesdeMilesimas(detalle.stockNuevoMilesimas),
                     req.userId
                 ]
             );
@@ -189,13 +284,13 @@ export const crearVenta = async (req, res, next) => {
 
         for (const pago of pagos) {
             await client.query(
-                `INSERT INTO pagos_venta (
-                    venta_id,
-                    metodo_pago,
-                    monto
-                )
+                `INSERT INTO pagos_venta (venta_id, metodo_pago, monto)
                 VALUES ($1, $2, $3)`,
-                [venta.id, pago.metodo_pago, Number(pago.monto).toFixed(2)]
+                [
+                    venta.id,
+                    pago.metodo_pago.trim(),
+                    decimalDesdeCentavos(centavosDesdeDecimal(pago.monto))
+                ]
             );
         }
 
@@ -203,19 +298,24 @@ export const crearVenta = async (req, res, next) => {
         transaccionIniciada = false;
 
         return res.status(201).json({
+            success: true,
             message: 'Venta registrada exitosamente',
             venta: {
                 ...venta,
+                total: numeroDesdeCentavos(totalCentavos),
                 detalles: detallesCalculados.map((detalle) => ({
                     producto_id: detalle.producto_id,
                     producto_nombre: detalle.nombre,
                     producto_codigo: detalle.codigo,
-                    cantidad: detalle.cantidad,
+                    cantidad: detalle.cantidadReal,
                     precio_unitario: detalle.precioUnitario,
                     subtotal: detalle.subtotal,
-                    stock_nuevo: detalle.stockNuevo
+                    stock_nuevo: Number(detalle.stockNuevoMilesimas) / 1000
                 })),
-                pagos
+                pagos: pagos.map((pago) => ({
+                    metodo_pago: pago.metodo_pago,
+                    monto: numeroDesdeCentavos(centavosDesdeDecimal(pago.monto))
+                }))
             }
         });
     } catch (error) {
@@ -224,13 +324,11 @@ export const crearVenta = async (req, res, next) => {
         }
 
         if (error.status) {
-            return res.status(error.status).json({
-                message: error.message
-            });
+            return responderError(res, error);
         }
 
         console.error('Error al registrar la venta:', error);
-        next(error);
+        return next(error);
     } finally {
         if (client) {
             client.release();
@@ -240,28 +338,21 @@ export const crearVenta = async (req, res, next) => {
 
 export const obtenerVentas = async (req, res, next) => {
     try {
-        const { desde, hasta, metodo_pago } = req.query;
+        const { desde, hasta, metodo_pago } = res.locals.queryValidada;
 
-        const condiciones = [];
-        const parametros = [];
+        const condiciones = ['ventas.comercio_id = $1'];
+        const parametros = [req.comercioId];
 
-        // Filtro por la fecha inicial, incluyendo ese día completo.
         if (desde) {
             parametros.push(desde);
-            condiciones.push(
-                `ventas.created_at >= $${parametros.length}::date`
-            );
+            condiciones.push(`ventas.created_at >= $${parametros.length}::date`);
         }
 
-        // Incluyo todo el día seleccionado en el filtro "Hasta".
         if (hasta) {
             parametros.push(hasta);
-            condiciones.push(
-                `ventas.created_at < ($${parametros.length}::date + INTERVAL '1 day')`
-            );
+            condiciones.push(`ventas.created_at < ($${parametros.length}::date + INTERVAL '1 day')`);
         }
 
-        // Una venta puede tener varios medios de pago; alcanza con que coincida uno.
         if (metodo_pago) {
             parametros.push(metodo_pago);
             condiciones.push(`
@@ -269,14 +360,10 @@ export const obtenerVentas = async (req, res, next) => {
                     SELECT 1
                     FROM pagos_venta
                     WHERE pagos_venta.venta_id = ventas.id
-                    AND pagos_venta.metodo_pago = $${parametros.length}
+                      AND pagos_venta.metodo_pago = $${parametros.length}
                 )
             `);
         }
-
-        const where = condiciones.length > 0
-            ? `WHERE ${condiciones.join(' AND ')}`
-            : '';
 
         const result = await pool.query(
             `SELECT
@@ -305,7 +392,8 @@ export const obtenerVentas = async (req, res, next) => {
             FROM ventas
             INNER JOIN usuarios
                 ON usuarios.id = ventas.usuario_id
-            ${where}
+                AND usuarios.comercio_id = ventas.comercio_id
+            WHERE ${condiciones.join(' AND ')}
             ORDER BY ventas.created_at DESC, ventas.numero_venta DESC`,
             parametros
         );
@@ -313,7 +401,7 @@ export const obtenerVentas = async (req, res, next) => {
         return res.status(200).json(result.rows);
     } catch (error) {
         console.error('Error al obtener las ventas:', error);
-        next(error);
+        return next(error);
     }
 };
 
@@ -334,12 +422,15 @@ export const obtenerVentaPorId = async (req, res, next) => {
             FROM ventas
             INNER JOIN usuarios
                 ON usuarios.id = ventas.usuario_id
-            WHERE ventas.id = $1`,
-            [id]
+                AND usuarios.comercio_id = ventas.comercio_id
+            WHERE ventas.id = $1
+              AND ventas.comercio_id = $2`,
+            [id, req.comercioId]
         );
 
-        if (ventaResult.rows.length === 0) {
+        if (ventaResult.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Venta no encontrada'
             });
         }
@@ -354,9 +445,12 @@ export const obtenerVentaPorId = async (req, res, next) => {
                 detalle_ventas.precio_unitario,
                 detalle_ventas.subtotal
             FROM detalle_ventas
+            INNER JOIN ventas
+                ON ventas.id = detalle_ventas.venta_id
             WHERE detalle_ventas.venta_id = $1
+              AND ventas.comercio_id = $2
             ORDER BY detalle_ventas.created_at ASC`,
-            [id]
+            [id, req.comercioId]
         );
 
         const pagosResult = await pool.query(
@@ -366,9 +460,12 @@ export const obtenerVentaPorId = async (req, res, next) => {
                 pagos_venta.monto,
                 pagos_venta.created_at
             FROM pagos_venta
+            INNER JOIN ventas
+                ON ventas.id = pagos_venta.venta_id
             WHERE pagos_venta.venta_id = $1
+              AND ventas.comercio_id = $2
             ORDER BY pagos_venta.created_at ASC`,
-            [id]
+            [id, req.comercioId]
         );
 
         return res.status(200).json({
@@ -378,7 +475,7 @@ export const obtenerVentaPorId = async (req, res, next) => {
         });
     } catch (error) {
         console.error('Error al obtener la venta:', error);
-        next(error);
+        return next(error);
     }
 };
 
@@ -394,80 +491,90 @@ export const anularVenta = async (req, res, next) => {
         await client.query('BEGIN');
         transaccionIniciada = true;
 
-        // Bloqueo la venta para impedir que se anule dos veces al mismo tiempo.
         const ventaResult = await client.query(
             `SELECT id, numero_venta, estado
             FROM ventas
             WHERE id = $1
+              AND comercio_id = $2
             FOR UPDATE`,
-            [id]
+            [id, req.comercioId]
         );
 
-        if (ventaResult.rows.length === 0) {
-            await client.query('ROLLBACK');
-            transaccionIniciada = false;
-
-            return res.status(404).json({
-                message: 'Venta no encontrada'
-            });
+        if (ventaResult.rowCount === 0) {
+            throw crearError('Venta no encontrada', 404);
         }
 
         const venta = ventaResult.rows[0];
 
         if (venta.estado !== 'completada') {
-            await client.query('ROLLBACK');
-            transaccionIniciada = false;
-
-            return res.status(400).json({
-                message: 'Solo se pueden anular ventas completadas'
-            });
+            throw crearError('Solo se pueden anular ventas completadas');
         }
 
         const detallesResult = await client.query(
-            `SELECT producto_id, cantidad
+            `SELECT
+                detalle_ventas.producto_id,
+                SUM(detalle_ventas.cantidad)::text AS cantidad
             FROM detalle_ventas
-            WHERE venta_id = $1
-            ORDER BY producto_id ASC`,
-            [id]
+            INNER JOIN ventas
+                ON ventas.id = detalle_ventas.venta_id
+            WHERE detalle_ventas.venta_id = $1
+              AND ventas.comercio_id = $2
+            GROUP BY detalle_ventas.producto_id
+            ORDER BY detalle_ventas.producto_id ASC`,
+            [id, req.comercioId]
         );
 
-        if (detallesResult.rows.length === 0) {
-            throw new Error('La venta no tiene productos para restituir');
+        if (detallesResult.rowCount === 0) {
+            throw crearError('La venta no tiene productos para restituir');
         }
 
-        // Bloqueo los productos en el mismo orden para reducir conflictos entre operaciones.
+        const productosBloqueados = new Map();
+
         for (const detalle of detallesResult.rows) {
             const productoResult = await client.query(
-                `SELECT id, nombre, stock
+                `SELECT productos.id, productos.nombre, productos.stock
                 FROM productos
-                WHERE id = $1
+                WHERE productos.id = $1
+                  AND productos.comercio_id = $2
                 FOR UPDATE`,
-                [detalle.producto_id]
+                [detalle.producto_id, req.comercioId]
             );
 
-            if (productoResult.rows.length === 0) {
-                throw new Error(
-                    `No se encontró el producto ${detalle.producto_id}`
-                );
+            if (productoResult.rowCount === 0) {
+                throw crearError('No se encontró un producto de esta venta en tu comercio', 409);
             }
 
-            const producto = productoResult.rows[0];
-            const stockAnterior = Number(producto.stock);
-            const cantidad = Number(detalle.cantidad);
-            const stockNuevo = Number(
-                (stockAnterior + cantidad).toFixed(3)
-            );
+            productosBloqueados.set(detalle.producto_id, {
+                ...productoResult.rows[0],
+                cantidadMilesimas: milesimasDesdeDecimal(detalle.cantidad)
+            });
+        }
+
+        for (const producto of productosBloqueados.values()) {
+            const stockAnteriorMilesimas = milesimasDesdeDecimal(producto.stock);
+            const stockNuevoMilesimas =
+                stockAnteriorMilesimas + producto.cantidadMilesimas;
+
+            if (!Number.isFinite(Number(stockNuevoMilesimas)) || stockNuevoMilesimas >= 10_000_000_000_000n) {
+                throw crearError(`El stock resultante de ${producto.nombre} supera el rango permitido`);
+            }
 
             await client.query(
                 `UPDATE productos
                 SET stock = $1,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = $2`,
-                [stockNuevo, producto.id]
+                WHERE id = $2
+                  AND comercio_id = $3`,
+                [
+                    decimalDesdeMilesimas(stockNuevoMilesimas),
+                    producto.id,
+                    req.comercioId
+                ]
             );
 
             await client.query(
                 `INSERT INTO movimientos_stock (
+                    comercio_id,
                     producto_id,
                     tipo,
                     cantidad,
@@ -476,31 +583,33 @@ export const anularVenta = async (req, res, next) => {
                     stock_nuevo,
                     usuario_id
                 )
-                VALUES ($1, 'entrada', $2, $3, $4, $5, $6)`,
+                VALUES ($1, $2, 'entrada', $3, $4, $5, $6, $7)`,
                 [
+                    req.comercioId,
                     producto.id,
-                    cantidad,
+                    decimalDesdeMilesimas(producto.cantidadMilesimas),
                     `Anulación de venta N.º ${venta.numero_venta}`,
-                    stockAnterior,
-                    stockNuevo,
+                    decimalDesdeMilesimas(stockAnteriorMilesimas),
+                    decimalDesdeMilesimas(stockNuevoMilesimas),
                     req.userId
                 ]
             );
         }
 
-        // Cambio el estado recién después de restituir todos los productos.
         const actualizacion = await client.query(
             `UPDATE ventas
             SET estado = 'anulada'
             WHERE id = $1
+              AND comercio_id = $2
             RETURNING id, numero_venta, total, estado, created_at`,
-            [id]
+            [id, req.comercioId]
         );
 
         await client.query('COMMIT');
         transaccionIniciada = false;
 
         return res.status(200).json({
+            success: true,
             message: 'Venta anulada y stock restituido correctamente',
             venta: actualizacion.rows[0]
         });
@@ -510,13 +619,11 @@ export const anularVenta = async (req, res, next) => {
         }
 
         if (error.status) {
-            return res.status(error.status).json({
-                message: error.message
-            });
+            return responderError(res, error);
         }
 
         console.error('Error al anular la venta:', error);
-        next(error);
+        return next(error);
     } finally {
         if (client) {
             client.release();
@@ -524,69 +631,32 @@ export const anularVenta = async (req, res, next) => {
     }
 };
 
-
 export const obtenerInformeVentas = async (req, res, next) => {
     try {
-        const { desde, hasta, estado, usuario_id } = req.query;
+        const { desde, hasta, estado, usuario_id } = res.locals.queryValidada;
 
-        const condiciones = [];
-        const parametros = [];
-
-        if (desde && !/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
-            return res.status(400).json({
-                message: 'La fecha inicial no es válida'
-            });
-        }
-
-        if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
-            return res.status(400).json({
-                message: 'La fecha final no es válida'
-            });
-        }
-
-        if (desde && hasta && desde > hasta) {
-            return res.status(400).json({
-                message: 'La fecha inicial no puede ser posterior a la fecha final'
-            });
-        }
+        const condiciones = ['ventas.comercio_id = $1'];
+        const parametros = [req.comercioId];
 
         if (desde) {
             parametros.push(desde);
-            condiciones.push(
-                `ventas.created_at >= $${parametros.length}::date`
-            );
+            condiciones.push(`ventas.created_at >= $${parametros.length}::date`);
         }
 
         if (hasta) {
             parametros.push(hasta);
-            condiciones.push(
-                `ventas.created_at < ($${parametros.length}::date + INTERVAL '1 day')`
-            );
+            condiciones.push(`ventas.created_at < ($${parametros.length}::date + INTERVAL '1 day')`);
         }
 
         if (estado) {
-            if (!['completada', 'anulada'].includes(estado)) {
-                return res.status(400).json({
-                    message: 'El estado seleccionado no es válido'
-                });
-            }
-
             parametros.push(estado);
-            condiciones.push(
-                `ventas.estado = $${parametros.length}`
-            );
+            condiciones.push(`ventas.estado = $${parametros.length}`);
         }
 
         if (usuario_id) {
             parametros.push(usuario_id);
-            condiciones.push(
-                `ventas.usuario_id = $${parametros.length}`
-            );
+            condiciones.push(`ventas.usuario_id = $${parametros.length}`);
         }
-
-        const where = condiciones.length
-            ? `WHERE ${condiciones.join(' AND ')}`
-            : '';
 
         const resultado = await pool.query(
             `SELECT
@@ -631,29 +701,32 @@ export const obtenerInformeVentas = async (req, res, next) => {
             FROM ventas
             INNER JOIN usuarios
                 ON usuarios.id = ventas.usuario_id
-            ${where}
+                AND usuarios.comercio_id = ventas.comercio_id
+            WHERE ${condiciones.join(' AND ')}
             ORDER BY ventas.created_at DESC, ventas.numero_venta DESC`,
             parametros
         );
 
         const ventas = resultado.rows;
+        const ventasCompletadas = ventas.filter((venta) => venta.estado === 'completada');
+        const ventasAnuladas = ventas.filter((venta) => venta.estado === 'anulada');
 
-        const ventasCompletadas = ventas.filter(
-            venta => venta.estado === 'completada'
-        );
+        const sumarTotales = (lista) => {
+            const totalCentavos = lista.reduce(
+                (total, venta) => total + centavosDesdeDecimal(venta.total),
+                0n
+            );
 
-        const ventasAnuladas = ventas.filter(
-            venta => venta.estado === 'anulada'
-        );
-
-        const sumarTotales = lista =>
-            lista.reduce(
-                (total, venta) => total + Math.round(Number(venta.total) * 100),
-                0
-            ) / 100;
+            return numeroDesdeCentavos(totalCentavos);
+        };
 
         return res.status(200).json({
-            filtros: { desde: desde || null, hasta: hasta || null, estado: estado || null, usuario_id: usuario_id || null },
+            filtros: {
+                desde: desde || null,
+                hasta: hasta || null,
+                estado: estado || null,
+                usuario_id: usuario_id || null
+            },
             resumen: {
                 cantidad_ventas: ventas.length,
                 cantidad_completadas: ventasCompletadas.length,
@@ -665,6 +738,6 @@ export const obtenerInformeVentas = async (req, res, next) => {
         });
     } catch (error) {
         console.error('Error al generar el informe de ventas:', error);
-        next(error);
+        return next(error);
     }
 };

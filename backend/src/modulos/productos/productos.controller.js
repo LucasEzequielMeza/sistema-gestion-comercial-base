@@ -1,4 +1,4 @@
-import {pool} from '../../db.js';
+import { pool } from '../../db.js';
 
 export const crearProducto = async (req, res, next) => {
     let client;
@@ -12,6 +12,14 @@ export const crearProducto = async (req, res, next) => {
         client = await pool.connect();
         await client.query('BEGIN');
 
+        if (!req.comercioId) {
+            await client.query('ROLLBACK');
+            return res.status(401).json({
+                success: false,
+                message: 'La sesión no tiene un comercio asignado'
+            });
+        }
+
         if (!categoria_id) {
             await client.query('ROLLBACK');
             return res.status(400).json({
@@ -23,29 +31,38 @@ export const crearProducto = async (req, res, next) => {
         const categoria = await client.query(
             `SELECT id
             FROM categorias
-            WHERE id = $1 AND activo = true`,
-            [categoria_id]
+            WHERE id = $1
+              AND comercio_id = $2
+              AND activo = true`,
+            [categoria_id, req.comercioId]
         );
 
         if (categoria.rowCount === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({
                 success: false,
-                message: 'La categoría seleccionada no existe o está inactiva'
+                message: 'La categoría seleccionada no existe, está inactiva o pertenece a otro comercio'
             });
         }
 
         const result = await client.query(
             `INSERT INTO productos (
-                nombre, descripcion, imagen, codigo, categoria_id,
+                comercio_id, nombre, descripcion, imagen, codigo, categoria_id,
                 precio_compra, precio_venta, stock, stock_minimo
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *`,
             [
-                nombre, descripcion ?? null, imagen ?? null, codigo,
-                categoria_id, precio_compra, precio_venta,
-                stock ?? 0, stock_minimo ?? 0
+                req.comercioId,
+                nombre,
+                descripcion ?? null,
+                imagen ?? null,
+                codigo,
+                categoria_id,
+                precio_compra,
+                precio_venta,
+                stock ?? 0,
+                stock_minimo ?? 0
             ]
         );
 
@@ -68,7 +85,7 @@ export const crearProducto = async (req, res, next) => {
         if (error.code === '23505') {
             return res.status(409).json({
                 success: false,
-                message: 'El código del producto ya existe'
+                message: 'El código del producto ya existe en este comercio'
             });
         }
 
@@ -107,11 +124,13 @@ export const obtenerProductos = async (req, res) => {
             FROM productos
             LEFT JOIN categorias
                 ON productos.categoria_id = categorias.id
-            ORDER BY productos.nombre ASC`
+                AND categorias.comercio_id = productos.comercio_id
+            WHERE productos.comercio_id = $1
+            ORDER BY productos.nombre ASC`,
+            [req.comercioId]
         );
 
         return res.status(200).json(result.rows);
-
     } catch (error) {
         console.error('Error al obtener los productos:', error.message);
 
@@ -145,12 +164,15 @@ export const obtenerProductoPorId = async (req, res) => {
             FROM productos
             LEFT JOIN categorias
                 ON productos.categoria_id = categorias.id
-            WHERE productos.id = $1`,
-            [id]
+                AND categorias.comercio_id = productos.comercio_id
+            WHERE productos.id = $1
+              AND productos.comercio_id = $2`,
+            [id, req.comercioId]
         );
 
         if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Producto no encontrado'
             });
         }
@@ -160,10 +182,10 @@ export const obtenerProductoPorId = async (req, res) => {
         console.error('Error al obtener el producto:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al obtener el producto'
         });
     }
-
 };
 
 export const actualizarProducto = async (req, res) => {
@@ -176,6 +198,7 @@ export const actualizarProducto = async (req, res) => {
     try {
         if (!categoria_id) {
             return res.status(400).json({
+                success: false,
                 message: 'Debés seleccionar una categoría'
             });
         }
@@ -183,13 +206,16 @@ export const actualizarProducto = async (req, res) => {
         const categoria = await pool.query(
             `SELECT id
             FROM categorias
-            WHERE id = $1 AND activo = true`,
-            [categoria_id]
+            WHERE id = $1
+              AND comercio_id = $2
+              AND activo = true`,
+            [categoria_id, req.comercioId]
         );
 
         if (categoria.rowCount === 0) {
             return res.status(400).json({
-                message: 'La categoría seleccionada no existe o está inactiva'
+                success: false,
+                message: 'La categoría seleccionada no existe, está inactiva o pertenece a otro comercio'
             });
         }
 
@@ -204,6 +230,7 @@ export const actualizarProducto = async (req, res) => {
                 precio_venta = $7,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $8
+              AND comercio_id = $9
             RETURNING *`,
             [
                 nombre,
@@ -213,36 +240,39 @@ export const actualizarProducto = async (req, res) => {
                 categoria_id,
                 precio_compra,
                 precio_venta,
-                id
+                id,
+                req.comercioId
             ]
         );
 
         if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Producto no encontrado'
             });
         }
 
         return res.status(200).json({
+            success: true,
             message: 'Producto actualizado exitosamente',
             producto: result.rows[0]
         });
     } catch (error) {
         if (error.code === '23505') {
             return res.status(409).json({
-                message: 'El código del producto ya existe'
+                success: false,
+                message: 'El código del producto ya existe en este comercio'
             });
         }
 
         console.error('Error al actualizar el producto:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al actualizar el producto'
         });
     }
-
 };
-
 
 export const buscarProductos = async (req, res) => {
     const { search } = res.locals.queryValidada;
@@ -267,14 +297,16 @@ export const buscarProductos = async (req, res) => {
             FROM productos
             LEFT JOIN categorias
                 ON productos.categoria_id = categorias.id
-            WHERE productos.activo = true
-                AND (
-                    productos.nombre ILIKE $1
-                    OR productos.codigo ILIKE $1
-                )
+                AND categorias.comercio_id = productos.comercio_id
+            WHERE productos.comercio_id = $1
+              AND productos.activo = true
+              AND (
+                  productos.nombre ILIKE $2
+                  OR productos.codigo ILIKE $2
+              )
             ORDER BY productos.nombre ASC
             LIMIT 50`,
-            [`%${search}%`]
+            [req.comercioId, `%${search}%`]
         );
 
         return res.status(200).json(result.rows);
@@ -282,6 +314,7 @@ export const buscarProductos = async (req, res) => {
         console.error('Error al buscar productos:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al buscar productos'
         });
     }
@@ -296,12 +329,14 @@ export const desactivarProducto = async (req, res) => {
             SET activo = false,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
+              AND comercio_id = $2
             RETURNING *`,
-            [id]
+            [id, req.comercioId]
         );
 
         if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Producto no encontrado'
             });
         }
@@ -311,6 +346,7 @@ export const desactivarProducto = async (req, res) => {
         console.error('Error al desactivar el producto:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al desactivar el producto'
         });
     }
@@ -325,12 +361,14 @@ export const activarProducto = async (req, res) => {
             SET activo = true,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
+              AND comercio_id = $2
             RETURNING *`,
-            [id]
+            [id, req.comercioId]
         );
 
         if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Producto no encontrado'
             });
         }
@@ -340,6 +378,7 @@ export const activarProducto = async (req, res) => {
         console.error('Error al activar el producto:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al activar el producto'
         });
     }
@@ -366,8 +405,11 @@ export const obtenerProductosInactivos = async (req, res) => {
             FROM productos
             LEFT JOIN categorias
                 ON productos.categoria_id = categorias.id
-            WHERE productos.activo = false
-            ORDER BY productos.nombre ASC`
+                AND categorias.comercio_id = productos.comercio_id
+            WHERE productos.comercio_id = $1
+              AND productos.activo = false
+            ORDER BY productos.nombre ASC`,
+            [req.comercioId]
         );
 
         return res.status(200).json(result.rows);
@@ -375,6 +417,7 @@ export const obtenerProductosInactivos = async (req, res) => {
         console.error('Error al obtener los productos inactivos:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al obtener los productos inactivos'
         });
     }
@@ -387,22 +430,26 @@ export const eliminarProducto = async (req, res) => {
         const result = await pool.query(
             `DELETE FROM productos
             WHERE id = $1
+              AND comercio_id = $2
             RETURNING id`,
-            [id]
+            [id, req.comercioId]
         );
 
         if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Producto no encontrado'
             });
         }
 
         return res.status(200).json({
+            success: true,
             message: 'Producto eliminado definitivamente'
         });
     } catch (error) {
         if (error.code === '23503') {
             return res.status(409).json({
+                success: false,
                 message: 'No se puede eliminar este producto porque tiene registros asociados'
             });
         }
@@ -410,6 +457,7 @@ export const eliminarProducto = async (req, res) => {
         console.error('Error al eliminar el producto:', error.message);
 
         return res.status(500).json({
+            success: false,
             message: 'Error al eliminar el producto'
         });
     }

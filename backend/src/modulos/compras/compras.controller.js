@@ -1,23 +1,114 @@
 import { pool } from '../../db.js';
-import { crearCompraSchema } from '../../schemas/compras/compras.schema.js';
 
-export const crearCompra = async (req, res, next) => {
-    const validacion = crearCompraSchema.safeParse(req.body);
-
-    if (!validacion.success) {
-        return res.status(400).json({
-            message: 'Los datos de la compra no son válidos',
-            errores: validacion.error.issues
-        });
+const normalizarTexto = (valor) => {
+    if (typeof valor !== 'string') {
+        return null;
     }
 
-    const {
-        proveedor_id,
-        tipo_comprobante,
-        numero_comprobante,
-        observaciones,
-        detalles
-    } = validacion.data;
+    return valor.trim() || null;
+};
+
+// Calculo cada subtotal con dos decimales y acumulo el total en centavos.
+const calcularDetalles = (detalles) => {
+    let totalCentavos = 0;
+
+    const detallesCalculados = detalles.map((detalle) => {
+        const subtotalCentavos = Math.round(detalle.cantidad * detalle.costo_unitario * 100);
+
+        totalCentavos += subtotalCentavos;
+
+        return {
+            ...detalle,
+            subtotal: subtotalCentavos / 100
+        };
+    });
+
+    return {
+        detallesCalculados,
+        total: totalCentavos / 100
+    };
+};
+
+const revertirTransaccion = async (client, transaccionIniciada) => {
+    if (client && transaccionIniciada) {
+        await client.query('ROLLBACK').catch(() => {});
+    }
+};
+
+const comprobarProveedorActivo = async (client, proveedorId, comercioId) => {
+    const resultado = await client.query(
+        `SELECT id
+        FROM proveedores
+        WHERE id = $1 AND comercio_id = $2 AND activo = true`,
+        [proveedorId, comercioId]
+    );
+
+    return resultado.rows.length > 0;
+};
+
+const comprobarProductosActivos = async (client, detalles, comercioId) => {
+    const productosIds = detalles.map((detalle) => detalle.producto_id);
+
+    const resultado = await client.query(
+        `SELECT id
+        FROM productos
+        WHERE id = ANY($1::uuid[])
+        AND comercio_id = $2
+        AND activo = true`,
+        [productosIds, comercioId]
+    );
+
+    const productosActivos = new Set(resultado.rows.map((producto) => producto.id));
+
+    return productosIds.find((productoId) => !productosActivos.has(productoId)) || null;
+};
+
+const comprobarComprobanteDuplicado = async (client, comercioId, proveedorId, tipoComprobante, numeroComprobante, compraId = null) => {
+    if (!tipoComprobante || !numeroComprobante) {
+        return false;
+    }
+
+    const parametros = [comercioId, proveedorId, tipoComprobante, numeroComprobante];
+    let condicionCompra = '';
+
+    if (compraId) {
+        parametros.push(compraId);
+        condicionCompra = `AND id <> $${parametros.length}`;
+    }
+
+    const resultado = await client.query(
+        `SELECT id
+        FROM compras
+        WHERE comercio_id = $1
+        AND proveedor_id = $2
+        AND tipo_comprobante = $3
+        AND numero_comprobante = $4
+        ${condicionCompra}
+        LIMIT 1`,
+        parametros
+    );
+
+    return resultado.rows.length > 0;
+};
+
+const responderErrorComprobanteDuplicado = (error, res) => {
+    if (error.code === '23505' && error.constraint === 'uq_compras_comprobante') {
+        res.status(409).json({
+            message: 'Ya existe una compra con ese comprobante para este proveedor'
+        });
+
+        return true;
+    }
+
+    return false;
+};
+
+export const crearCompra = async (req, res, next) => {
+    const { proveedor_id, tipo_comprobante, numero_comprobante, observaciones, detalles } = req.body;
+
+    const tipoNormalizado = normalizarTexto(tipo_comprobante);
+    const numeroNormalizado = normalizarTexto(numero_comprobante);
+    const observacionesNormalizadas = normalizarTexto(observaciones);
 
     let client;
     let transaccionIniciada = false;
@@ -28,13 +119,9 @@ export const crearCompra = async (req, res, next) => {
         await client.query('BEGIN');
         transaccionIniciada = true;
 
-        const proveedor = await client.query(
-            `SELECT id FROM proveedores
-            WHERE id = $1 AND activo = true`,
-            [proveedor_id]
-        );
+        const proveedorActivo = await comprobarProveedorActivo(client, proveedor_id, req.comercioId);
 
-        if (proveedor.rows.length === 0) {
+        if (!proveedorActivo) {
             await client.query('ROLLBACK');
             transaccionIniciada = false;
 
@@ -43,87 +130,63 @@ export const crearCompra = async (req, res, next) => {
             });
         }
 
-        // Evito registrar dos veces el mismo comprobante para el proveedor.
-        const numeroNormalizado = numero_comprobante?.trim() || null;
-        const tipoNormalizado = tipo_comprobante?.trim() || null;
+        const comprobanteDuplicado = await comprobarComprobanteDuplicado(client, req.comercioId, proveedor_id, tipoNormalizado, numeroNormalizado);
 
-        if (numeroNormalizado && tipoNormalizado) {
-            const comprobanteExistente = await client.query(
-                `SELECT id FROM compras
-                WHERE proveedor_id = $1
-                AND tipo_comprobante = $2
-                AND numero_comprobante = $3
-                LIMIT 1`,
-                [
-                    proveedor_id,
-                    tipoNormalizado,
-                    numeroNormalizado
-                ]
-            );
+        if (comprobanteDuplicado) {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
 
-            if (comprobanteExistente.rows.length > 0) {
-                await client.query('ROLLBACK');
-                transaccionIniciada = false;
-
-                return res.status(409).json({
-                    message: 'Ya existe una compra registrada con este comprobante para este proveedor'
-                });
-            }
+            return res.status(409).json({
+                message: 'Ya existe una compra registrada con este comprobante para este proveedor'
+            });
         }
 
-        let total = 0;
+        const productoInvalido = await comprobarProductosActivos(client, detalles, req.comercioId);
 
-        const detallesCalculados = detalles.map((detalle) => {
-            const subtotal = Number(
-                (detalle.cantidad * detalle.costo_unitario).toFixed(2)
-            );
+        if (productoInvalido) {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
 
-            total += subtotal;
+            return res.status(404).json({
+                message: `El producto ${productoInvalido} no existe o está inactivo`
+            });
+        }
 
-            return {
-                ...detalle,
-                subtotal
-            };
-        });
-
-        total = Number(total.toFixed(2));
+        const { detallesCalculados, total } = calcularDetalles(detalles);
 
         const compraResult = await client.query(
             `INSERT INTO compras (
-                proveedor_id, usuario_id, tipo_comprobante,
-                numero_comprobante, total, observaciones
+                comercio_id,
+                proveedor_id,
+                usuario_id,
+                tipo_comprobante,
+                numero_comprobante,
+                total,
+                observaciones
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *`,
             [
+                req.comercioId,
                 proveedor_id,
                 req.userId,
                 tipoNormalizado,
                 numeroNormalizado,
                 total,
-                observaciones || null
+                observacionesNormalizadas
             ]
         );
 
         const compra = compraResult.rows[0];
 
         for (const detalle of detallesCalculados) {
-            const producto = await client.query(
-                `SELECT id FROM productos
-                WHERE id = $1 AND activo = true`,
-                [detalle.producto_id]
-            );
-
-            if (producto.rows.length === 0) {
-                throw new Error(
-                    `El producto ${detalle.producto_id} no existe o está inactivo`
-                );
-            }
-
             await client.query(
                 `INSERT INTO detalle_compras (
-                    compra_id, producto_id, cantidad,
-                    costo_unitario, subtotal
+                    compra_id,
+                    producto_id,
+                    cantidad,
+                    costo_unitario,
+                    subtotal
                 )
                 VALUES ($1, $2, $3, $4, $5)`,
                 [
@@ -144,18 +207,10 @@ export const crearCompra = async (req, res, next) => {
             compra
         });
     } catch (error) {
-        if (client && transaccionIniciada) {
-            await client.query('ROLLBACK').catch(() => {});
-        }
+        await revertirTransaccion(client, transaccionIniciada);
 
-        // Muestro un mensaje claro si el comprobante ya existe.
-        if (
-            error.code === '23505' &&
-            error.constraint === 'uq_compras_comprobante'
-        ) {
-            return res.status(409).json({
-                message: 'Ya existe una compra con ese comprobante para este proveedor'
-            });
+        if (responderErrorComprobanteDuplicado(error, res)) {
+            return;
         }
 
         console.error('Error al registrar la compra:', error);
@@ -169,22 +224,11 @@ export const crearCompra = async (req, res, next) => {
 
 export const editarCompra = async (req, res, next) => {
     const { id } = req.params;
-    const validacion = crearCompraSchema.safeParse(req.body);
+    const { proveedor_id, tipo_comprobante, numero_comprobante, observaciones, detalles } = req.body;
 
-    if (!validacion.success) {
-        return res.status(400).json({
-            message: 'Los datos de la compra no son válidos',
-            errores: validacion.error.issues
-        });
-    }
-
-    const {
-        proveedor_id,
-        tipo_comprobante,
-        numero_comprobante,
-        observaciones,
-        detalles
-    } = validacion.data;
+    const tipoNormalizado = normalizarTexto(tipo_comprobante);
+    const numeroNormalizado = normalizarTexto(numero_comprobante);
+    const observacionesNormalizadas = normalizarTexto(observaciones);
 
     let client;
     let transaccionIniciada = false;
@@ -196,10 +240,11 @@ export const editarCompra = async (req, res, next) => {
         transaccionIniciada = true;
 
         const compraResult = await client.query(
-            `SELECT * FROM compras
-            WHERE id = $1
+            `SELECT *
+            FROM compras
+            WHERE id = $1 AND comercio_id = $2
             FOR UPDATE`,
-            [id]
+            [id, req.comercioId]
         );
 
         if (compraResult.rows.length === 0) {
@@ -220,13 +265,9 @@ export const editarCompra = async (req, res, next) => {
             });
         }
 
-        const proveedor = await client.query(
-            `SELECT id FROM proveedores
-            WHERE id = $1 AND activo = true`,
-            [proveedor_id]
-        );
+        const proveedorActivo = await comprobarProveedorActivo(client, proveedor_id, req.comercioId);
 
-        if (proveedor.rows.length === 0) {
+        if (!proveedorActivo) {
             await client.query('ROLLBACK');
             transaccionIniciada = false;
 
@@ -235,80 +276,29 @@ export const editarCompra = async (req, res, next) => {
             });
         }
 
-        const tipoNormalizado = tipo_comprobante?.trim() || null;
-        const numeroNormalizado = numero_comprobante?.trim() || null;
+        const comprobanteDuplicado = await comprobarComprobanteDuplicado(client, req.comercioId, proveedor_id, tipoNormalizado, numeroNormalizado, id);
 
-        if (tipoNormalizado && numeroNormalizado) {
-            const comprobanteExistente = await client.query(
-                `SELECT id FROM compras
-                WHERE proveedor_id = $1
-                AND tipo_comprobante = $2
-                AND numero_comprobante = $3
-                AND id <> $4
-                LIMIT 1`,
-                [
-                    proveedor_id,
-                    tipoNormalizado,
-                    numeroNormalizado,
-                    id
-                ]
-            );
+        if (comprobanteDuplicado) {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
 
-            if (comprobanteExistente.rows.length > 0) {
-                await client.query('ROLLBACK');
-                transaccionIniciada = false;
-
-                return res.status(409).json({
-                    message: 'Ya existe una compra registrada con este comprobante para este proveedor'
-                });
-            }
-        }
-
-        const productosValidados = new Set();
-        let total = 0;
-
-        const detallesCalculados = [];
-
-        for (const detalle of detalles) {
-            if (productosValidados.has(detalle.producto_id)) {
-                await client.query('ROLLBACK');
-                transaccionIniciada = false;
-
-                return res.status(400).json({
-                    message: 'No se puede incluir el mismo producto más de una vez'
-                });
-            }
-
-            productosValidados.add(detalle.producto_id);
-
-            const producto = await client.query(
-                `SELECT id FROM productos
-                WHERE id = $1 AND activo = true`,
-                [detalle.producto_id]
-            );
-
-            if (producto.rows.length === 0) {
-                await client.query('ROLLBACK');
-                transaccionIniciada = false;
-
-                return res.status(404).json({
-                    message: `El producto ${detalle.producto_id} no existe o está inactivo`
-                });
-            }
-
-            const subtotal = Number(
-                (detalle.cantidad * detalle.costo_unitario).toFixed(2)
-            );
-
-            total += subtotal;
-
-            detallesCalculados.push({
-                ...detalle,
-                subtotal
+            return res.status(409).json({
+                message: 'Ya existe una compra registrada con este comprobante para este proveedor'
             });
         }
 
-        total = Number(total.toFixed(2));
+        const productoInvalido = await comprobarProductosActivos(client, detalles, req.comercioId);
+
+        if (productoInvalido) {
+            await client.query('ROLLBACK');
+            transaccionIniciada = false;
+
+            return res.status(404).json({
+                message: `El producto ${productoInvalido} no existe o está inactivo`
+            });
+        }
+
+        const { detallesCalculados, total } = calcularDetalles(detalles);
 
         const actualizacion = await client.query(
             `UPDATE compras
@@ -318,15 +308,16 @@ export const editarCompra = async (req, res, next) => {
                 observaciones = $4,
                 total = $5,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $6
+            WHERE id = $6 AND comercio_id = $7
             RETURNING *`,
             [
                 proveedor_id,
                 tipoNormalizado,
                 numeroNormalizado,
-                observaciones || null,
+                observacionesNormalizadas,
                 total,
-                id
+                id,
+                req.comercioId
             ]
         );
 
@@ -339,8 +330,11 @@ export const editarCompra = async (req, res, next) => {
         for (const detalle of detallesCalculados) {
             await client.query(
                 `INSERT INTO detalle_compras (
-                    compra_id, producto_id, cantidad,
-                    costo_unitario, subtotal
+                    compra_id,
+                    producto_id,
+                    cantidad,
+                    costo_unitario,
+                    subtotal
                 )
                 VALUES ($1, $2, $3, $4, $5)`,
                 [
@@ -361,17 +355,10 @@ export const editarCompra = async (req, res, next) => {
             compra: actualizacion.rows[0]
         });
     } catch (error) {
-        if (client && transaccionIniciada) {
-            await client.query('ROLLBACK').catch(() => {});
-        }
+        await revertirTransaccion(client, transaccionIniciada);
 
-        if (
-            error.code === '23505' &&
-            error.constraint === 'uq_compras_comprobante'
-        ) {
-            return res.status(409).json({
-                message: 'Ya existe una compra con ese comprobante para este proveedor'
-            });
+        if (responderErrorComprobanteDuplicado(error, res)) {
+            return;
         }
 
         console.error('Error al editar la compra:', error);
@@ -392,12 +379,14 @@ export const obtenerCompras = async (req, res, next) => {
                 usuarios.nombre AS usuario_nombre,
                 usuarios.apellido AS usuario_apellido
             FROM compras
-            INNER JOIN proveedores ON proveedores.id = compras.proveedor_id
-            INNER JOIN usuarios ON usuarios.id = compras.usuario_id
-            ORDER BY compras.fecha DESC`
+            INNER JOIN proveedores ON proveedores.id = compras.proveedor_id AND proveedores.comercio_id = compras.comercio_id
+            INNER JOIN usuarios ON usuarios.id = compras.usuario_id AND usuarios.comercio_id = compras.comercio_id
+            WHERE compras.comercio_id = $1
+            ORDER BY compras.fecha DESC`,
+            [req.comercioId]
         );
 
-        res.status(200).json(result.rows);
+        return res.status(200).json(result.rows);
     } catch (error) {
         console.error('Error al obtener las compras:', error);
         next(error);
@@ -415,10 +404,10 @@ export const obtenerCompraPorId = async (req, res, next) => {
                 usuarios.nombre AS usuario_nombre,
                 usuarios.apellido AS usuario_apellido
             FROM compras
-            INNER JOIN proveedores ON proveedores.id = compras.proveedor_id
-            INNER JOIN usuarios ON usuarios.id = compras.usuario_id
-            WHERE compras.id = $1`,
-            [id]
+            INNER JOIN proveedores ON proveedores.id = compras.proveedor_id AND proveedores.comercio_id = compras.comercio_id
+            INNER JOIN usuarios ON usuarios.id = compras.usuario_id AND usuarios.comercio_id = compras.comercio_id
+            WHERE compras.id = $1 AND compras.comercio_id = $2`,
+            [id, req.comercioId]
         );
 
         if (compraResult.rows.length === 0) {
@@ -433,13 +422,13 @@ export const obtenerCompraPorId = async (req, res, next) => {
                 productos.nombre AS producto_nombre,
                 productos.codigo AS producto_codigo
             FROM detalle_compras
-            INNER JOIN productos
-                ON productos.id = detalle_compras.producto_id
+            INNER JOIN productos ON productos.id = detalle_compras.producto_id AND productos.comercio_id = $2
+            INNER JOIN compras ON compras.id = detalle_compras.compra_id AND compras.comercio_id = $2
             WHERE detalle_compras.compra_id = $1`,
-            [id]
+            [id, req.comercioId]
         );
 
-        res.status(200).json({
+        return res.status(200).json({
             ...compraResult.rows[0],
             detalles: detallesResult.rows
         });
@@ -462,10 +451,11 @@ export const confirmarCompra = async (req, res, next) => {
         transaccionIniciada = true;
 
         const compraResult = await client.query(
-            `SELECT * FROM compras
-            WHERE id = $1
+            `SELECT *
+            FROM compras
+            WHERE id = $1 AND comercio_id = $2
             FOR UPDATE`,
-            [id]
+            [id, req.comercioId]
         );
 
         if (compraResult.rows.length === 0) {
@@ -489,9 +479,12 @@ export const confirmarCompra = async (req, res, next) => {
         }
 
         const detallesResult = await client.query(
-            `SELECT * FROM detalle_compras
-            WHERE compra_id = $1`,
-            [id]
+            `SELECT detalle_compras.*
+            FROM detalle_compras
+            INNER JOIN compras ON compras.id = detalle_compras.compra_id
+            WHERE detalle_compras.compra_id = $1
+            AND compras.comercio_id = $2`,
+            [id, req.comercioId]
         );
 
         if (detallesResult.rows.length === 0) {
@@ -503,40 +496,51 @@ export const confirmarCompra = async (req, res, next) => {
             });
         }
 
+        // Bloqueo cada producto mientras actualizo su stock.
         for (const detalle of detallesResult.rows) {
             const productoResult = await client.query(
-                `SELECT stock FROM productos
-                WHERE id = $1 AND activo = true
+                `SELECT stock
+                FROM productos
+                WHERE id = $1 AND comercio_id = $2 AND activo = true
                 FOR UPDATE`,
-                [detalle.producto_id]
+                [detalle.producto_id, req.comercioId]
             );
 
             if (productoResult.rows.length === 0) {
-                throw new Error(
-                    `El producto ${detalle.producto_id} no existe o está inactivo`
-                );
+                await client.query('ROLLBACK');
+                transaccionIniciada = false;
+
+                return res.status(409).json({
+                    message: `El producto ${detalle.producto_id} no existe o está inactivo. La compra no fue confirmada`
+                });
             }
 
             const stockAnterior = Number(productoResult.rows[0].stock);
             const cantidad = Number(detalle.cantidad);
-            const stockNuevo = Number(
-                (stockAnterior + cantidad).toFixed(3)
-            );
+            const stockNuevo = Math.round((stockAnterior + cantidad) * 1000) / 1000;
 
             await client.query(
                 `UPDATE productos
-                SET stock = $1, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $2`,
-                [stockNuevo, detalle.producto_id]
+                SET stock = $1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = $2 AND comercio_id = $3`,
+                [stockNuevo, detalle.producto_id, req.comercioId]
             );
 
             await client.query(
                 `INSERT INTO movimientos_stock (
-                    producto_id, tipo, cantidad, motivo,
-                    stock_anterior, stock_nuevo, usuario_id
+                    comercio_id,
+                    producto_id,
+                    tipo,
+                    cantidad,
+                    motivo,
+                    stock_anterior,
+                    stock_nuevo,
+                    usuario_id
                 )
-                VALUES ($1, 'entrada', $2, $3, $4, $5, $6)`,
+                VALUES ($1, $2, 'entrada', $3, $4, $5, $6, $7)`,
                 [
+                    req.comercioId,
                     detalle.producto_id,
                     cantidad,
                     'Compra',
@@ -551,9 +555,9 @@ export const confirmarCompra = async (req, res, next) => {
             `UPDATE compras
             SET estado = 'confirmada',
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1
+            WHERE id = $1 AND comercio_id = $2
             RETURNING *`,
-            [id]
+            [id, req.comercioId]
         );
 
         await client.query('COMMIT');
@@ -564,9 +568,7 @@ export const confirmarCompra = async (req, res, next) => {
             compra: actualizacion.rows[0]
         });
     } catch (error) {
-        if (client && transaccionIniciada) {
-            await client.query('ROLLBACK').catch(() => {});
-        }
+        await revertirTransaccion(client, transaccionIniciada);
 
         console.error('Error al confirmar la compra:', error);
         next(error);
@@ -585,9 +587,11 @@ export const cancelarCompra = async (req, res, next) => {
             `UPDATE compras
             SET estado = 'cancelada',
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1 AND estado = 'pendiente'
+            WHERE id = $1
+            AND comercio_id = $2
+            AND estado = 'pendiente'
             RETURNING *`,
-            [id]
+            [id, req.comercioId]
         );
 
         if (result.rows.length === 0) {
@@ -596,7 +600,7 @@ export const cancelarCompra = async (req, res, next) => {
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
             message: 'Compra cancelada',
             compra: result.rows[0]
         });
@@ -606,13 +610,12 @@ export const cancelarCompra = async (req, res, next) => {
     }
 };
 
-
 export const obtenerInformeCompras = async (req, res, next) => {
-    const { desde, hasta, estado, proveedor_id } = req.query;
+    const { desde, hasta, estado, proveedor_id } = res.locals.queryValidada;
 
     try {
-        const condiciones = [];
-        const parametros = [];
+        const condiciones = ['compras.comercio_id = $1'];
+        const parametros = [req.comercioId];
 
         if (desde) {
             parametros.push(desde);
@@ -625,14 +628,6 @@ export const obtenerInformeCompras = async (req, res, next) => {
         }
 
         if (estado) {
-            const estadosValidos = ['pendiente', 'confirmada', 'cancelada'];
-
-            if (!estadosValidos.includes(estado)) {
-                return res.status(400).json({
-                    message: 'El estado seleccionado no es válido'
-                });
-            }
-
             parametros.push(estado);
             condiciones.push(`compras.estado = $${parametros.length}`);
         }
@@ -642,9 +637,7 @@ export const obtenerInformeCompras = async (req, res, next) => {
             condiciones.push(`compras.proveedor_id = $${parametros.length}`);
         }
 
-        const where = condiciones.length > 0
-            ? `WHERE ${condiciones.join(' AND ')}`
-            : '';
+        const where = `WHERE ${condiciones.join(' AND ')}`;
 
         const comprasResult = await pool.query(
             `SELECT
@@ -675,14 +668,10 @@ export const obtenerInformeCompras = async (req, res, next) => {
                     '[]'::json
                 ) AS detalles
             FROM compras
-            INNER JOIN proveedores
-                ON proveedores.id = compras.proveedor_id
-            INNER JOIN usuarios
-                ON usuarios.id = compras.usuario_id
-            LEFT JOIN detalle_compras
-                ON detalle_compras.compra_id = compras.id
-            LEFT JOIN productos
-                ON productos.id = detalle_compras.producto_id
+            INNER JOIN proveedores ON proveedores.id = compras.proveedor_id AND proveedores.comercio_id = compras.comercio_id
+            INNER JOIN usuarios ON usuarios.id = compras.usuario_id AND usuarios.comercio_id = compras.comercio_id
+            LEFT JOIN detalle_compras ON detalle_compras.compra_id = compras.id
+            LEFT JOIN productos ON productos.id = detalle_compras.producto_id AND productos.comercio_id = compras.comercio_id
             ${where}
             GROUP BY
                 compras.id,
@@ -697,24 +686,12 @@ export const obtenerInformeCompras = async (req, res, next) => {
             `SELECT
                 COUNT(*)::int AS cantidad_total,
                 COALESCE(SUM(compras.total), 0) AS importe_total,
-                COUNT(*) FILTER (
-                    WHERE compras.estado = 'pendiente'
-                )::int AS cantidad_pendientes,
-                COALESCE(SUM(compras.total) FILTER (
-                    WHERE compras.estado = 'pendiente'
-                ), 0) AS importe_pendiente,
-                COUNT(*) FILTER (
-                    WHERE compras.estado = 'confirmada'
-                )::int AS cantidad_confirmadas,
-                COALESCE(SUM(compras.total) FILTER (
-                    WHERE compras.estado = 'confirmada'
-                ), 0) AS importe_confirmado,
-                COUNT(*) FILTER (
-                    WHERE compras.estado = 'cancelada'
-                )::int AS cantidad_canceladas,
-                COALESCE(SUM(compras.total) FILTER (
-                    WHERE compras.estado = 'cancelada'
-                ), 0) AS importe_cancelado
+                COUNT(*) FILTER (WHERE compras.estado = 'pendiente')::int AS cantidad_pendientes,
+                COALESCE(SUM(compras.total) FILTER (WHERE compras.estado = 'pendiente'), 0) AS importe_pendiente,
+                COUNT(*) FILTER (WHERE compras.estado = 'confirmada')::int AS cantidad_confirmadas,
+                COALESCE(SUM(compras.total) FILTER (WHERE compras.estado = 'confirmada'), 0) AS importe_confirmado,
+                COUNT(*) FILTER (WHERE compras.estado = 'cancelada')::int AS cantidad_canceladas,
+                COALESCE(SUM(compras.total) FILTER (WHERE compras.estado = 'cancelada'), 0) AS importe_cancelado
             FROM compras
             ${where}`,
             parametros
@@ -723,8 +700,9 @@ export const obtenerInformeCompras = async (req, res, next) => {
         const proveedoresResult = await pool.query(
             `SELECT id, nombre
             FROM proveedores
-            WHERE activo = true
-            ORDER BY nombre ASC`
+            WHERE comercio_id = $1 AND activo = true
+            ORDER BY nombre ASC`,
+            [req.comercioId]
         );
 
         return res.status(200).json({

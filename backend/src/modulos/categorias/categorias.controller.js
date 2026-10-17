@@ -1,253 +1,228 @@
 import { pool } from '../../db.js';
 
-
-// Creamos una nueva categoría
 export const crearCategoria = async (req, res, next) => {
-
-    const {
-        nombre,
-        descripcion
-    } = req.body;
+    const { nombre, descripcion } = req.body;
 
     try {
-
-        // Insertamos la categoría en la base de datos
-        const result = await pool.query(
-            `INSERT INTO categorias (nombre, descripcion)
-            VALUES ($1, $2)
-            RETURNING *`,
-            [nombre, descripcion]
-        );
-
-        const categoriaCreada = result.rows[0];
-
-        // Devolvemos la categoría creada
-        res.status(201).json({
-            message: 'Categoría creada exitosamente',
-            categoria: categoriaCreada
-        });
-
-    } catch (error) {
-
-        console.error('Error al crear la categoría:', error);
-
-        // Verificamos si el nombre ya existe
-        if (error.code === '23505') {
-            return res.status(409).json({
-                message: 'La categoría ya existe'
+        if (!req.comercioId) {
+            return res.status(401).json({
+                success: false,
+                message: 'La sesión no tiene un comercio asignado'
             });
         }
 
-        next(error);
+        const result = await pool.query(
+            `INSERT INTO categorias (comercio_id, nombre, descripcion)
+            VALUES ($1, $2, $3)
+            RETURNING *`,
+            [req.comercioId, nombre, descripcion ?? null]
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'Categoría creada exitosamente',
+            categoria: result.rows[0]
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({
+                success: false,
+                message: 'Ya existe una categoría con ese nombre en tu comercio'
+            });
+        }
+
+        console.error('Error al crear la categoría:', error.message);
+        return next(error);
     }
 };
 
-
-// Obtenemos todas las categorías
 export const obtenerCategorias = async (req, res) => {
-
     try {
-
         const result = await pool.query(
             `SELECT *
             FROM categorias
-            ORDER BY nombre ASC`
+            WHERE comercio_id = $1
+            ORDER BY nombre ASC`,
+            [req.comercioId]
         );
 
-        res.status(200).json(result.rows);
-
+        return res.status(200).json(result.rows);
     } catch (error) {
+        console.error('Error al obtener las categorías:', error.message);
 
-        console.error('Error al obtener las categorías:', error);
-
-        res.status(500).json({
+        return res.status(500).json({
+            success: false,
             message: 'Error al obtener las categorías'
         });
     }
 };
 
-
-// Obtenemos una categoría por su ID
 export const obtenerCategoriaPorId = async (req, res) => {
-
     const { id } = req.params;
 
     try {
-
         const result = await pool.query(
             `SELECT *
             FROM categorias
-            WHERE id = $1`,
-            [id]
+            WHERE id = $1
+              AND comercio_id = $2`,
+            [id, req.comercioId]
         );
 
-        if (result.rows.length === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Categoría no encontrada'
             });
         }
 
-        res.status(200).json(result.rows[0]);
-
+        return res.status(200).json(result.rows[0]);
     } catch (error) {
+        console.error('Error al obtener la categoría:', error.message);
 
-        console.error('Error al obtener la categoría:', error);
-
-        res.status(500).json({
+        return res.status(500).json({
+            success: false,
             message: 'Error al obtener la categoría'
         });
     }
 };
 
-
-// Actualizamos una categoría
 export const actualizarCategoria = async (req, res) => {
-
     const { id } = req.params;
-
-    const {
-        nombre,
-        descripcion
-    } = req.body;
+    const { nombre, descripcion } = req.body;
 
     try {
-
         const result = await pool.query(
             `UPDATE categorias
             SET nombre = $1,
                 descripcion = $2,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $3
+              AND comercio_id = $4
             RETURNING *`,
-            [nombre, descripcion, id]
+            [nombre, descripcion ?? null, id, req.comercioId]
         );
 
-        if (result.rows.length === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Categoría no encontrada'
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
+            success: true,
             message: 'Categoría actualizada exitosamente',
             categoria: result.rows[0]
         });
-
     } catch (error) {
-
-        console.error('Error al actualizar la categoría:', error);
-
         if (error.code === '23505') {
             return res.status(409).json({
-                message: 'La categoría ya existe'
+                success: false,
+                message: 'Ya existe una categoría con ese nombre en tu comercio'
             });
         }
 
-        res.status(500).json({
+        console.error('Error al actualizar la categoría:', error.message);
+
+        return res.status(500).json({
+            success: false,
             message: 'Error al actualizar la categoría'
         });
     }
 };
 
-
-// Buscamos categorías por nombre
 export const buscarCategorias = async (req, res) => {
-
-    const { search } = req.query;
+    const { search } = res.locals.queryValidada;
 
     try {
-
         const result = await pool.query(
             `SELECT *
             FROM categorias
-            WHERE nombre ILIKE $1
+            WHERE comercio_id = $1
+              AND nombre ILIKE $2
             ORDER BY nombre ASC`,
-            [`%${search}%`]
+            [req.comercioId, `%${search}%`]
         );
 
-        res.status(200).json(result.rows);
-
+        return res.status(200).json(result.rows);
     } catch (error) {
+        console.error('Error al buscar categorías:', error.message);
 
-        console.error('Error al buscar categorías:', error);
-
-        res.status(500).json({
+        return res.status(500).json({
+            success: false,
             message: 'Error al buscar categorías'
         });
     }
 };
 
-
-// Desactivamos una categoría
 export const desactivarCategoria = async (req, res) => {
-
     const { id } = req.params;
 
     try {
-
         const result = await pool.query(
             `UPDATE categorias
             SET activo = false,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
+              AND comercio_id = $2
             RETURNING *`,
-            [id]
+            [id, req.comercioId]
         );
 
-        if (result.rows.length === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Categoría no encontrada'
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
+            success: true,
             message: 'Categoría desactivada exitosamente',
             categoria: result.rows[0]
         });
-
     } catch (error) {
+        console.error('Error al desactivar la categoría:', error.message);
 
-        console.error('Error al desactivar la categoría:', error);
-
-        res.status(500).json({
+        return res.status(500).json({
+            success: false,
             message: 'Error al desactivar la categoría'
         });
     }
 };
 
-
-// Activamos una categoría
 export const activarCategoria = async (req, res) => {
-
     const { id } = req.params;
 
     try {
-
         const result = await pool.query(
             `UPDATE categorias
             SET activo = true,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
+              AND comercio_id = $2
             RETURNING *`,
-            [id]
+            [id, req.comercioId]
         );
 
-        if (result.rows.length === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({
+                success: false,
                 message: 'Categoría no encontrada'
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
+            success: true,
             message: 'Categoría activada exitosamente',
             categoria: result.rows[0]
         });
-
     } catch (error) {
+        console.error('Error al activar la categoría:', error.message);
 
-        console.error('Error al activar la categoría:', error);
-
-        res.status(500).json({
+        return res.status(500).json({
+            success: false,
             message: 'Error al activar la categoría'
         });
     }
