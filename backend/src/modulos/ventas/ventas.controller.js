@@ -81,7 +81,12 @@ export const crearVenta = async (req, res, next) => {
             });
         }
 
-        if (!Array.isArray(detalles) || detalles.length === 0 || !Array.isArray(pagos) || pagos.length === 0) {
+        if (
+            !Array.isArray(detalles) ||
+            detalles.length === 0 ||
+            !Array.isArray(pagos) ||
+            pagos.length === 0
+        ) {
             throw crearError('La venta debe incluir productos y al menos un pago');
         }
 
@@ -89,6 +94,29 @@ export const crearVenta = async (req, res, next) => {
 
         await client.query('BEGIN');
         transaccionIniciada = true;
+
+        // Bloqueamos el comercio para asignar números sin duplicados
+        // cuando se registran varias ventas al mismo tiempo.
+        const comercioResult = await client.query(
+            `SELECT id
+            FROM comercios
+            WHERE id = $1
+            FOR UPDATE`,
+            [req.comercioId]
+        );
+
+        if (comercioResult.rowCount === 0) {
+            throw crearError('No se encontró el comercio de la sesión', 404);
+        }
+
+        const numeroResult = await client.query(
+            `SELECT COALESCE(MAX(numero_venta), 0) + 1 AS siguiente_numero
+            FROM ventas
+            WHERE comercio_id = $1`,
+            [req.comercioId]
+        );
+
+        const siguienteNumero = numeroResult.rows[0].siguiente_numero;
 
         const detallesOrdenados = [...detalles].sort((a, b) =>
             String(a.producto_id).localeCompare(String(b.producto_id))
@@ -207,10 +235,21 @@ export const crearVenta = async (req, res, next) => {
         }
 
         const ventaResult = await client.query(
-            `INSERT INTO ventas (comercio_id, usuario_id, total, estado)
-            VALUES ($1, $2, $3, 'completada')
+            `INSERT INTO ventas (
+                comercio_id,
+                numero_venta,
+                usuario_id,
+                total,
+                estado
+            )
+            VALUES ($1, $2, $3, $4, 'completada')
             RETURNING id, numero_venta, usuario_id, total, estado, created_at`,
-            [req.comercioId, req.userId, decimalDesdeCentavos(totalCentavos)]
+            [
+                req.comercioId,
+                siguienteNumero,
+                req.userId,
+                decimalDesdeCentavos(totalCentavos)
+            ]
         );
 
         const venta = ventaResult.rows[0];
@@ -555,7 +594,10 @@ export const anularVenta = async (req, res, next) => {
             const stockNuevoMilesimas =
                 stockAnteriorMilesimas + producto.cantidadMilesimas;
 
-            if (!Number.isFinite(Number(stockNuevoMilesimas)) || stockNuevoMilesimas >= 10_000_000_000_000n) {
+            if (
+                !Number.isFinite(Number(stockNuevoMilesimas)) ||
+                stockNuevoMilesimas >= 10_000_000_000_000n
+            ) {
                 throw crearError(`El stock resultante de ${producto.nombre} supera el rango permitido`);
             }
 

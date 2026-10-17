@@ -21,7 +21,7 @@ function LoginPage() {
         const usuario = await login(data)
 
         if (usuario) {
-            navigate('/productos')
+            navigate('/panel-de-control', { replace: true })
         }
     })
 

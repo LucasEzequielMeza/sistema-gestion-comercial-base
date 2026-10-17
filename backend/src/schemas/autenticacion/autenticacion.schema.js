@@ -48,3 +48,53 @@ export const cambiarContrasenaSchema = z.object({
         path: ['contrasenaNueva']
     }
 );
+
+export const actualizarComercioSchema = z.object({
+    nombre: z.string()
+        .trim()
+        .min(2, 'El nombre comercial debe tener al menos 2 caracteres')
+        .max(150, 'El nombre comercial es demasiado largo'),
+
+    cuit: z.string()
+        .trim()
+        .max(20, 'El CUIT es demasiado largo')
+        .optional()
+        .default(''),
+
+    direccion: z.string()
+        .trim()
+        .max(200, 'La dirección es demasiado larga')
+        .optional()
+        .default(''),
+
+    localidad: z.string()
+        .trim()
+        .max(100, 'La localidad es demasiado larga')
+        .optional()
+        .default(''),
+
+    telefono: z.string()
+        .trim()
+        .max(50, 'El teléfono es demasiado largo')
+        .optional()
+        .default(''),
+
+    mail_contacto: z.union([
+        z.string()
+            .trim()
+            .email('Ingresá un correo comercial válido')
+            .max(150),
+        z.literal('')
+    ]).optional().default(''),
+
+    logo: z.union([
+        z.string()
+            .max(1500000, 'El logo supera el tamaño permitido')
+            .regex(
+                /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/,
+                'El logo debe ser una imagen PNG, JPG o WebP válida'
+            ),
+        z.literal(''),
+        z.null()
+    ]).optional().default('')
+});

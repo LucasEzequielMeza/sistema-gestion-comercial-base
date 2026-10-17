@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVentas } from '../Context/ContextoVentas';
+import axios from '../Api/axios';
+import { generarComprobanteVenta } from '../Utils/generarComprobanteVenta';
 
 function VentasPage() {
     const {
@@ -8,6 +10,7 @@ function VentasPage() {
         cargando,
         error,
         obtenerVentas,
+        obtenerVentaPorId,
         anularVenta
     } = useVentas();
 
@@ -22,10 +25,22 @@ function VentasPage() {
     const [procesando, setProcesando] = useState(null);
     const [ventaAAnular, setVentaAAnular] = useState(null);
     const [mensajeExito, setMensajeExito] = useState('');
+    const [generandoComprobante, setGenerandoComprobante] = useState(null);
+    const [errorComprobante, setErrorComprobante] = useState('');
 
     useEffect(() => {
         obtenerVentas().catch(() => {});
     }, []);
+
+    useEffect(() => {
+        if (!mensajeExito) return;
+
+        const temporizador = setTimeout(() => {
+            setMensajeExito('');
+        }, 10000);
+
+        return () => clearTimeout(temporizador);
+    }, [mensajeExito]);
 
     const manejarCambio = async (e) => {
         const { name, value } = e.target;
@@ -66,6 +81,39 @@ function VentasPage() {
             await obtenerVentas();
         } catch {
             // El contexto se encarga de guardar el error.
+        }
+    };
+
+    const emitirComprobante = async (venta) => {
+        try {
+            setGenerandoComprobante(venta.id);
+            setErrorComprobante('');
+            setMensajeExito('');
+
+            // Obtengo la venta completa para incluir productos y pagos.
+            const respuestaVenta = await obtenerVentaPorId(venta.id);
+            const ventaCompleta = respuestaVenta.venta || respuestaVenta;
+
+            // Obtengo los datos y el logo configurados para el comercio.
+            const respuestaComercio = await axios.get(
+                '/profile/configuracion-comercio'
+            );
+
+            await generarComprobanteVenta(
+                ventaCompleta,
+                respuestaComercio.data.comercio
+            );
+
+            setMensajeExito(
+                `Se generó el comprobante de la venta N.º ${venta.numero_venta}.`
+            );
+        } catch (error) {
+            setErrorComprobante(
+                error.response?.data?.message ||
+                'No se pudo generar el comprobante. Intentá nuevamente.'
+            );
+        } finally {
+            setGenerandoComprobante(null);
         }
     };
 
@@ -155,6 +203,24 @@ function VentasPage() {
                         <button
                             type="button"
                             onClick={() => setMensajeExito('')}
+                            aria-label="Cerrar mensaje"
+                            className="text-lg leading-none"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
+                {errorComprobante && (
+                    <div
+                        role="alert"
+                        className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                    >
+                        <p>{errorComprobante}</p>
+
+                        <button
+                            type="button"
+                            onClick={() => setErrorComprobante('')}
                             aria-label="Cerrar mensaje"
                             className="text-lg leading-none"
                         >
@@ -263,7 +329,7 @@ function VentasPage() {
                         </p>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[850px] text-left text-sm">
+                            <table className="w-full min-w-[1000px] text-left text-sm">
                                 <thead className="bg-stone-50 text-stone-500">
                                     <tr>
                                         <th className="px-5 py-3 font-medium">N.º</th>
@@ -327,9 +393,20 @@ function VentasPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => navigate(`/ventas/${venta.id}`)}
-                                                        className="rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-100"
+                                                        className="whitespace-nowrap rounded-lg border border-stone-300 px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-100"
                                                     >
                                                         Ver detalle
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => emitirComprobante(venta)}
+                                                        disabled={generandoComprobante !== null}
+                                                        className="whitespace-nowrap rounded-lg bg-stone-800 px-3 py-2 text-xs font-medium text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        {generandoComprobante === venta.id
+                                                            ? 'Generando...'
+                                                            : 'Emitir comprobante'}
                                                     </button>
 
                                                     {venta.estado === 'completada' && (
@@ -337,7 +414,7 @@ function VentasPage() {
                                                             type="button"
                                                             onClick={() => setVentaAAnular(venta)}
                                                             disabled={procesando !== null}
-                                                            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                                            className="whitespace-nowrap rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                                                         >
                                                             {procesando === venta.id ? 'Anulando...' : 'Anular'}
                                                         </button>

@@ -8,11 +8,11 @@ import {
     FaExclamationTriangle,
     FaArrowRight,
     FaSyncAlt,
-    FaPlus,
     FaClipboardList,
     FaArrowDown,
     FaArrowUp,
-    FaSlidersH
+    FaSlidersH,
+    FaFileAlt
 } from 'react-icons/fa'
 
 const formatoPrecio = (valor) => {
@@ -325,67 +325,101 @@ function DashboardPage() {
                 </section>
 
                 {/* Accesos rápidos */}
+                                {/* Accesos a los módulos principales */}
                 <section>
                     <div className="mb-4">
                         <h2 className="text-lg font-bold text-stone-900">
-                            Accesos rápidos
+                            Módulos del sistema
                         </h2>
                         <p className="mt-1 text-sm text-stone-500">
-                            Ingresá directamente a las tareas más habituales.
+                            Accedé directamente a las principales áreas del comercio.
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                        {/* Ventas: acceso principal */}
                         <Link
-                            to="/productos/nuevo"
-                            className="flex items-center gap-3 rounded-xl bg-[#171412] p-4 text-white transition hover:bg-[#292421]"
+                            to="/ventas"
+                            className="group flex items-center gap-3 rounded-xl border border-stone-900 bg-[#171412] p-4 text-white shadow-sm transition hover:bg-[#292421] hover:shadow-md"
                         >
-                            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10">
-                                <FaPlus />
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                                <FaCashRegister className="text-lg" />
                             </span>
                             <span>
-                                <span className="block text-sm font-semibold">Nuevo producto</span>
-                                <span className="mt-1 block text-xs text-stone-300">Agregar al catálogo</span>
+                                <span className="block text-sm font-bold">Ventas</span>
+                                <span className="mt-1 block text-xs text-stone-300">
+                                    Gestionar ventas
+                                </span>
                             </span>
+                            <FaArrowRight className="ml-auto shrink-0 text-sm text-stone-300 transition group-hover:translate-x-1" />
                         </Link>
 
+                        {/* Compras */}
                         <Link
-                            to="/ventas/nueva"
-                            className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50"
+                            to="/compras"
+                            className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-stone-300 hover:bg-stone-50"
                         >
-                            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                                <FaCashRegister />
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                                <FaShoppingCart className="text-lg" />
                             </span>
                             <span>
-                                <span className="block text-sm font-semibold text-stone-900">Registrar venta</span>
-                                <span className="mt-1 block text-xs text-stone-500">Cargar una operación</span>
+                                <span className="block text-sm font-semibold text-stone-900">Compras</span>
+                                <span className="mt-1 block text-xs text-stone-500">
+                                    Gestionar compras
+                                </span>
                             </span>
+                            <FaArrowRight className="ml-auto shrink-0 text-sm text-stone-400 transition group-hover:translate-x-1" />
                         </Link>
 
+                        {/* Productos */}
                         <Link
-                            to="/compras/crear"
-                            className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50"
+                            to="/productos"
+                            className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-stone-300 hover:bg-stone-50"
                         >
-                            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                                <FaShoppingCart />
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-700">
+                                <FaBoxOpen className="text-lg" />
                             </span>
                             <span>
-                                <span className="block text-sm font-semibold text-stone-900">Registrar compra</span>
-                                <span className="mt-1 block text-xs text-stone-500">Cargar mercadería</span>
+                                <span className="block text-sm font-semibold text-stone-900">Productos</span>
+                                <span className="mt-1 block text-xs text-stone-500">
+                                    Ver el catálogo
+                                </span>
                             </span>
+                            <FaArrowRight className="ml-auto shrink-0 text-sm text-stone-400 transition group-hover:translate-x-1" />
                         </Link>
 
+                        {/* Stock */}
                         <Link
-                            to="/stock/movimientos"
-                            className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:bg-stone-50"
+                            to="/stock"
+                            className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-stone-300 hover:bg-stone-50"
                         >
-                            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                                <FaClipboardList />
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                                <FaClipboardList className="text-lg" />
                             </span>
                             <span>
-                                <span className="block text-sm font-semibold text-stone-900">Movimientos de stock</span>
-                                <span className="mt-1 block text-xs text-stone-500">Consultar el historial</span>
+                                <span className="block text-sm font-semibold text-stone-900">Stock</span>
+                                <span className="mt-1 block text-xs text-stone-500">
+                                    Consultar inventario
+                                </span>
                             </span>
+                            <FaArrowRight className="ml-auto shrink-0 text-sm text-stone-400 transition group-hover:translate-x-1" />
+                        </Link>
+
+                        {/* Informes */}
+                        <Link
+                            to="/informes"
+                            className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-4 transition hover:border-stone-300 hover:bg-stone-50"
+                        >
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700">
+                                <FaFileAlt className="text-lg" />
+                            </span>
+                            <span>
+                                <span className="block text-sm font-semibold text-stone-900">Informes</span>
+                                <span className="mt-1 block text-xs text-stone-500">
+                                    Consultar reportes
+                                </span>
+                            </span>
+                            <FaArrowRight className="ml-auto shrink-0 text-sm text-stone-400 transition group-hover:translate-x-1" />
                         </Link>
                     </div>
                 </section>

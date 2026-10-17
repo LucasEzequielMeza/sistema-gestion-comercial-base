@@ -1,34 +1,58 @@
+
 -- Esquema inicial del Sistema de Gestión Comercial.
 -- Ejecutar una sola vez sobre una base de datos vacía.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Usuarios
+-- Cada cliente tendrá su propio comercio.
+CREATE TABLE comercios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre VARCHAR(150) NOT NULL,
+    cuit VARCHAR(20),
+    direccion VARCHAR(200),
+    localidad VARCHAR(100),
+    telefono VARCHAR(50),
+    mail_contacto VARCHAR(150),
+    logo TEXT,
+    activo BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT comercios_logo_tamano_check
+        CHECK (logo IS NULL OR length(logo) <= 1500000)
+);
+
+-- Usuarios: el usuario y el correo son únicos en el sistema para permitir el inicio de sesión.
 CREATE TABLE usuarios (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
     nombre VARCHAR(100) NOT NULL,
     apellido VARCHAR(100) NOT NULL,
     usuario VARCHAR(50) NOT NULL UNIQUE,
     mail VARCHAR(150) NOT NULL UNIQUE,
     contrasena VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (comercio_id, id)
 );
 
--- Categorías
+-- Categorías de cada comercio.
 CREATE TABLE categorias (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    nombre VARCHAR(100) NOT NULL UNIQUE,
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
+    nombre VARCHAR(100) NOT NULL,
     descripcion TEXT,
     activo BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (comercio_id, nombre),
+    UNIQUE (comercio_id, id)
 );
 
--- Proveedores
+-- Proveedores de cada comercio.
 CREATE TABLE proveedores (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
     nombre VARCHAR(150) NOT NULL,
-    cuit VARCHAR(20) UNIQUE,
+    cuit VARCHAR(20),
     telefono VARCHAR(50),
     mail VARCHAR(150),
     direccion VARCHAR(200),
@@ -36,118 +60,116 @@ CREATE TABLE proveedores (
     observaciones TEXT,
     activo BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (comercio_id, cuit),
+    UNIQUE (comercio_id, id)
 );
 
--- Productos
+-- Productos y existencias.
 CREATE TABLE productos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
     nombre VARCHAR(150) NOT NULL,
     descripcion TEXT,
     imagen TEXT,
-    codigo VARCHAR(50) UNIQUE,
-    categoria_id UUID REFERENCES categorias(id),
-    precio_compra NUMERIC(10,2) NOT NULL,
-    precio_venta NUMERIC(10,2) NOT NULL,
-    stock NUMERIC(10,3) NOT NULL DEFAULT 0,
-    stock_minimo NUMERIC(10,3) NOT NULL DEFAULT 0,
+    codigo VARCHAR(50),
+    categoria_id UUID NOT NULL,
+    precio_compra NUMERIC(10,2) NOT NULL CHECK (precio_compra >= 0),
+    precio_venta NUMERIC(10,2) NOT NULL CHECK (precio_venta >= 0),
+    stock NUMERIC(10,3) NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    stock_minimo NUMERIC(10,3) NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
     activo BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (comercio_id, codigo),
+    UNIQUE (comercio_id, id),
+    FOREIGN KEY (comercio_id, categoria_id)
+        REFERENCES categorias(comercio_id, id)
+        ON DELETE RESTRICT
 );
 
--- Movimientos de stock
+-- Movimientos de stock.
 CREATE TABLE movimientos_stock (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
     producto_id UUID NOT NULL,
-    tipo VARCHAR(20) NOT NULL,
-    cantidad NUMERIC(10,3) NOT NULL,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
+    cantidad NUMERIC(10,3) NOT NULL CHECK (cantidad > 0),
     motivo VARCHAR(50) NOT NULL,
     stock_anterior NUMERIC(10,3) NOT NULL,
     stock_nuevo NUMERIC(10,3) NOT NULL,
     usuario_id UUID,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_movimientos_stock_producto
-        FOREIGN KEY (producto_id) REFERENCES productos(id),
-
-    CONSTRAINT fk_movimientos_stock_usuario
-        FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
-
-    CONSTRAINT chk_movimientos_stock_tipo
-        CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
-
-    CONSTRAINT chk_movimientos_stock_cantidad
-        CHECK (cantidad > 0)
+    FOREIGN KEY (comercio_id, producto_id)
+        REFERENCES productos(comercio_id, id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (comercio_id, usuario_id)
+        REFERENCES usuarios(comercio_id, id)
+        ON DELETE RESTRICT
 );
 
--- Compras
+-- Compras a proveedores.
 CREATE TABLE compras (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
     proveedor_id UUID NOT NULL,
     usuario_id UUID NOT NULL,
     fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     tipo_comprobante VARCHAR(50),
     numero_comprobante VARCHAR(100),
-    total NUMERIC(12,2) NOT NULL DEFAULT 0,
-    estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+    total NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total >= 0),
+    estado VARCHAR(20) NOT NULL DEFAULT 'pendiente'
+        CHECK (estado IN ('pendiente', 'confirmada', 'cancelada')),
     observaciones TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_compras_proveedor
-        FOREIGN KEY (proveedor_id) REFERENCES proveedores(id),
-
-    CONSTRAINT fk_compras_usuario
-        FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
-
-    CONSTRAINT chk_compras_total
-        CHECK (total >= 0),
-
-    CONSTRAINT chk_compras_estado
-        CHECK (estado IN ('pendiente', 'confirmada', 'cancelada'))
+    UNIQUE (comercio_id, id),
+    FOREIGN KEY (comercio_id, proveedor_id)
+        REFERENCES proveedores(comercio_id, id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (comercio_id, usuario_id)
+        REFERENCES usuarios(comercio_id, id)
+        ON DELETE RESTRICT
 );
 
--- Productos incluidos en cada compra
+-- Detalle de cada compra.
+-- El controlador valida que los productos pertenezcan al comercio de la compra.
 CREATE TABLE detalle_compras (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    compra_id UUID NOT NULL,
-    producto_id UUID NOT NULL,
-    cantidad NUMERIC(10,3) NOT NULL,
-    costo_unitario NUMERIC(12,2) NOT NULL,
-    subtotal NUMERIC(12,2) NOT NULL,
-
-    CONSTRAINT fk_detalle_compras_compra
-        FOREIGN KEY (compra_id) REFERENCES compras(id),
-
-    CONSTRAINT fk_detalle_compras_producto
-        FOREIGN KEY (producto_id) REFERENCES productos(id),
-
-    CONSTRAINT chk_detalle_compras_cantidad
-        CHECK (cantidad > 0),
-
-    CONSTRAINT chk_detalle_compras_costo
-        CHECK (costo_unitario >= 0),
-
-    CONSTRAINT chk_detalle_compras_subtotal
-        CHECK (subtotal >= 0),
-
-    CONSTRAINT uq_detalle_compras_producto
-        UNIQUE (compra_id, producto_id)
+    compra_id UUID NOT NULL REFERENCES compras(id) ON DELETE RESTRICT,
+    producto_id UUID NOT NULL REFERENCES productos(id) ON DELETE RESTRICT,
+    cantidad NUMERIC(10,3) NOT NULL CHECK (cantidad > 0),
+    costo_unitario NUMERIC(12,2) NOT NULL CHECK (costo_unitario >= 0),
+    subtotal NUMERIC(12,2) NOT NULL CHECK (subtotal >= 0),
+    UNIQUE (compra_id, producto_id)
 );
 
--- Ventas
+-- Evita duplicar comprobantes para un mismo proveedor dentro de un comercio.
+CREATE UNIQUE INDEX uq_compras_comprobante
+ON compras (comercio_id, proveedor_id, tipo_comprobante, numero_comprobante)
+WHERE numero_comprobante IS NOT NULL
+  AND TRIM(numero_comprobante) <> '';
+
+-- Ventas registradas por los usuarios.
+-- El número se asigna desde el backend y es independiente por comercio.
 CREATE TABLE ventas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    numero_venta BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
-    usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
+    numero_venta BIGINT NOT NULL CHECK (numero_venta > 0),
+    usuario_id UUID NOT NULL,
     total NUMERIC(12,2) NOT NULL CHECK (total > 0),
     estado VARCHAR(20) NOT NULL DEFAULT 'completada'
         CHECK (estado IN ('completada', 'anulada')),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (comercio_id, numero_venta),
+    UNIQUE (comercio_id, id),
+    FOREIGN KEY (comercio_id, usuario_id)
+        REFERENCES usuarios(comercio_id, id)
+        ON DELETE RESTRICT
 );
 
--- Detalle de productos vendidos
+-- Productos incluidos en cada venta.
+-- Los nombres y códigos se guardan para conservar los datos históricos.
 CREATE TABLE detalle_ventas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     venta_id UUID NOT NULL REFERENCES ventas(id) ON DELETE RESTRICT,
@@ -160,7 +182,7 @@ CREATE TABLE detalle_ventas (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Pagos de las ventas
+-- Pagos de cada venta.
 CREATE TABLE pagos_venta (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     venta_id UUID NOT NULL REFERENCES ventas(id) ON DELETE RESTRICT,
@@ -177,82 +199,79 @@ CREATE TABLE pagos_venta (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Índices para acelerar las consultas frecuentes
-CREATE INDEX idx_productos_categoria
-    ON productos(categoria_id);
-
-CREATE INDEX idx_productos_activo_nombre
-    ON productos(activo, nombre);
-
-CREATE INDEX idx_movimientos_stock_producto_fecha
-    ON movimientos_stock(producto_id, created_at DESC);
-
-CREATE INDEX idx_compras_proveedor
-    ON compras(proveedor_id);
-
-CREATE INDEX idx_compras_usuario
-    ON compras(usuario_id);
-
-CREATE INDEX idx_compras_fecha
-    ON compras(fecha);
-
-CREATE INDEX idx_detalle_compras_compra
-    ON detalle_compras(compra_id);
-
-CREATE INDEX idx_detalle_compras_producto
-    ON detalle_compras(producto_id);
-
-CREATE UNIQUE INDEX uq_compras_comprobante
-    ON compras(proveedor_id, tipo_comprobante, numero_comprobante)
-    WHERE numero_comprobante IS NOT NULL
-      AND TRIM(numero_comprobante) <> '';
-
-CREATE INDEX idx_ventas_created_at
-    ON ventas(created_at);
-
-CREATE INDEX idx_ventas_estado
-    ON ventas(estado);
-
-CREATE INDEX idx_detalle_ventas_producto
-    ON detalle_ventas(producto_id);
-
-CREATE INDEX idx_pagos_venta_metodo
-    ON pagos_venta(metodo_pago);
-
-CREATE INDEX idx_pagos_venta_venta
-    ON pagos_venta(venta_id);
-
-    
--- Relaciona los productos con los proveedores que los venden.
+-- Relación entre proveedores y productos.
 CREATE TABLE proveedores_productos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comercio_id UUID NOT NULL REFERENCES comercios(id) ON DELETE RESTRICT,
     proveedor_id UUID NOT NULL,
     producto_id UUID NOT NULL,
-    precio_compra NUMERIC(12,2) NOT NULL DEFAULT 0,
+    precio_compra NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (precio_compra >= 0),
     codigo_proveedor VARCHAR(100),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_proveedores_productos_proveedor
-        FOREIGN KEY (proveedor_id)
-        REFERENCES proveedores(id)
+    UNIQUE (comercio_id, proveedor_id, producto_id),
+    FOREIGN KEY (comercio_id, proveedor_id)
+        REFERENCES proveedores(comercio_id, id)
         ON DELETE RESTRICT,
-
-    CONSTRAINT fk_proveedores_productos_producto
-        FOREIGN KEY (producto_id)
-        REFERENCES productos(id)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT chk_proveedores_productos_precio
-        CHECK (precio_compra >= 0),
-
-    CONSTRAINT uq_proveedores_productos
-        UNIQUE (proveedor_id, producto_id)
+    FOREIGN KEY (comercio_id, producto_id)
+        REFERENCES productos(comercio_id, id)
+        ON DELETE RESTRICT
 );
 
--- Índices para consultar rápidamente los productos de cada proveedor.
-CREATE INDEX idx_proveedores_productos_proveedor
-    ON proveedores_productos(proveedor_id);
+-- Índices para las consultas más habituales.
+CREATE INDEX idx_usuarios_comercio
+ON usuarios(comercio_id);
 
-CREATE INDEX idx_proveedores_productos_producto
-    ON proveedores_productos(producto_id);
+CREATE INDEX idx_categorias_comercio_activo
+ON categorias(comercio_id, activo, nombre);
+
+CREATE INDEX idx_proveedores_comercio_activo
+ON proveedores(comercio_id, activo, nombre);
+
+CREATE INDEX idx_productos_comercio_activo_nombre
+ON productos(comercio_id, activo, nombre);
+
+CREATE INDEX idx_productos_comercio_categoria
+ON productos(comercio_id, categoria_id);
+
+CREATE INDEX idx_movimientos_stock_comercio_producto_fecha
+ON movimientos_stock(comercio_id, producto_id, created_at DESC);
+
+CREATE INDEX idx_compras_comercio_proveedor
+ON compras(comercio_id, proveedor_id);
+
+CREATE INDEX idx_compras_comercio_usuario
+ON compras(comercio_id, usuario_id);
+
+CREATE INDEX idx_compras_comercio_fecha
+ON compras(comercio_id, fecha);
+
+CREATE INDEX idx_detalle_compras_compra
+ON detalle_compras(compra_id);
+
+CREATE INDEX idx_detalle_compras_producto
+ON detalle_compras(producto_id);
+
+CREATE INDEX idx_ventas_comercio_fecha
+ON ventas(comercio_id, created_at);
+
+CREATE INDEX idx_ventas_comercio_estado
+ON ventas(comercio_id, estado);
+
+CREATE INDEX idx_detalle_ventas_producto
+ON detalle_ventas(producto_id);
+
+CREATE INDEX idx_detalle_ventas_venta
+ON detalle_ventas(venta_id);
+
+CREATE INDEX idx_pagos_venta_venta
+ON pagos_venta(venta_id);
+
+CREATE INDEX idx_pagos_venta_metodo
+ON pagos_venta(metodo_pago);
+
+CREATE INDEX idx_proveedores_productos_comercio_proveedor
+ON proveedores_productos(comercio_id, proveedor_id);
+
+CREATE INDEX idx_proveedores_productos_comercio_producto
+ON proveedores_productos(comercio_id, producto_id);

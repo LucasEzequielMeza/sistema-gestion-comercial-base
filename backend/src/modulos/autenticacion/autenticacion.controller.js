@@ -276,3 +276,109 @@ export const cambiarContrasena = async (req, res) => {
         });
     }
 };
+
+export const getConfiguracionComercio = async (req, res) => {
+    try {
+        const resultado = await pool.query(
+            `SELECT
+                id,
+                nombre,
+                cuit,
+                direccion,
+                localidad,
+                telefono,
+                mail_contacto,
+                logo
+            FROM comercios
+            WHERE id = $1`,
+            [req.comercioId]
+        );
+
+        if (resultado.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró la configuración del comercio'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            comercio: resultado.rows[0]
+        });
+    } catch (error) {
+        console.error('Error al obtener la configuración comercial:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'No se pudo obtener la configuración comercial'
+        });
+    }
+};
+
+export const actualizarConfiguracionComercio = async (req, res) => {
+    try {
+        const {
+            nombre,
+            cuit,
+            direccion,
+            localidad,
+            telefono,
+            mail_contacto,
+            logo
+        } = req.body;
+
+        // El comercio se identifica desde la sesión autenticada.
+        const resultado = await pool.query(
+            `UPDATE comercios
+            SET
+                nombre = $1,
+                cuit = NULLIF($2, ''),
+                direccion = NULLIF($3, ''),
+                localidad = NULLIF($4, ''),
+                telefono = NULLIF($5, ''),
+                mail_contacto = NULLIF($6, ''),
+                logo = NULLIF($7, ''),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $8
+            RETURNING
+                id,
+                nombre,
+                cuit,
+                direccion,
+                localidad,
+                telefono,
+                mail_contacto,
+                logo`,
+            [
+                nombre,
+                cuit ?? '',
+                direccion ?? '',
+                localidad ?? '',
+                telefono ?? '',
+                mail_contacto ?? '',
+                logo ?? '',
+                req.comercioId
+            ]
+        );
+
+        if (resultado.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el comercio'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Configuración comercial actualizada correctamente',
+            comercio: resultado.rows[0]
+        });
+    } catch (error) {
+        console.error('Error al actualizar la configuración comercial:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'No se pudo actualizar la configuración comercial'
+        });
+    }
+};
