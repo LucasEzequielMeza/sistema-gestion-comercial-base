@@ -18,6 +18,16 @@ function VentaForm() {
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
 
+    useEffect(() => {
+        if (!error) return;
+
+        const temporizador = setTimeout(() => {
+            setError('');
+        }, 7000);
+
+        return () => clearTimeout(temporizador);
+    }, [error]);
+
     const total = useMemo(() => {
         return carrito.reduce(
             (acumulado, item) =>

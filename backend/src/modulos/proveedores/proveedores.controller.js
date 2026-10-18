@@ -323,15 +323,27 @@ export const asociarProductoProveedor = async (req, res) => {
         }
 
         const result = await pool.query(
-            `INSERT INTO proveedores_productos (proveedor_id, producto_id, precio_compra, codigo_proveedor)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (proveedor_id, producto_id)
+            `INSERT INTO proveedores_productos (
+                comercio_id,
+                proveedor_id,
+                producto_id,
+                precio_compra,
+                codigo_proveedor
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (comercio_id, proveedor_id, producto_id)
             DO UPDATE SET
                 precio_compra = EXCLUDED.precio_compra,
                 codigo_proveedor = EXCLUDED.codigo_proveedor,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING *`,
-            [id, producto_id, Number(precio_compra), codigo_proveedor || null]
+            [
+                req.comercioId,
+                id,
+                producto_id,
+                Number(precio_compra),
+                codigo_proveedor || null
+            ]
         );
 
         return res.status(200).json({
@@ -339,7 +351,10 @@ export const asociarProductoProveedor = async (req, res) => {
             relacion: result.rows[0]
         });
     } catch (error) {
-        console.error('Error al asociar el producto al proveedor:', error.message);
+        console.error(
+            'Error al asociar el producto al proveedor:',
+            error.message
+        );
 
         return res.status(500).json({
             message: 'Error al asociar el producto al proveedor'

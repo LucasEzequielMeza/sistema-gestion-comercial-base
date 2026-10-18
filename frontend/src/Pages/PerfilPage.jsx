@@ -216,7 +216,7 @@ function PerfilPage() {
         try {
             await axios.patch('/profile/password', {
                 contrasenaActual: contrasenas.contrasenaActual,
-                nuevaContrasena: contrasenas.nuevaContrasena
+                contrasenaNueva: contrasenas.nuevaContrasena
             });
 
             setMensaje('Contraseña actualizada correctamente.');
